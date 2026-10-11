@@ -514,7 +514,8 @@ async function uploadToRobloxDirect({ name, description, assetType, creatorType,
 app.get("/api/state", (req, res) => {
   const hasKey = Boolean((state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim());
   const hasCookie = Boolean((state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim());
-  state.settings.openCloudConnected = hasKey || hasCookie;
+  // A configured key/cookie is not proof that Roblox accepted it.
+  state.settings.openCloudConnected = Boolean(hasCookie && state.settings.verifiedUsername);
   res.json({
     ...state,
     settings: {
@@ -1767,13 +1768,13 @@ app.post("/api/roblox/settings", async (req, res) => {
     webhookUrl: String(updates.webhookUrl || ""),
     openCloudKey: nextKey,
     robloxCookie: nextCookie,
-    openCloudConnected: hasKey || hasCookie
+    openCloudConnected: Boolean(hasCookie && verifiedUsername)
   };
 
   const histItem = addHistory(
     "Roblox Settings",
     "Update Kredensial & Target",
-    `Creator: ${state.settings.creatorType} #${state.settings.creatorId}${verifiedUsername ? ` (@${verifiedUsername})` : ""} | OpenCloud: ${hasKey ? "Aktif" : "Off"} | Cookie: ${hasCookie ? "Aktif" : "Off"}`,
+    `Creator: ${state.settings.creatorType} #${state.settings.creatorId}${verifiedUsername ? ` (@${verifiedUsername})` : ""} | OpenCloud: ${hasKey ? "Tersimpan (belum tervalidasi)" : "Off"} | Cookie: ${verifiedUsername ? "Terverifikasi" : hasCookie ? "Tersimpan (belum tervalidasi)" : "Off"}`,
     "Success"
   );
 
