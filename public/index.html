@@ -785,23 +785,31 @@
             <div class="panel">
               <div class="panel-heading">
                 <div>
-                  <h2>Konfigurasi Integrasi Roblox</h2>
-                  <p>Atur preferensi default untuk Creator ID, Group ID, dan preset konversi aset.</p>
+                  <h2>Konfigurasi Integrasi &amp; Kredensial Roblox</h2>
+                  <p>Cukup masukkan Roblox Open Cloud API Key + User/Group ID kamu (Tanpa perlu .ROBLOSECURITY Cookie!).</p>
                 </div>
                 <span class="panel-symbol">⚙</span>
               </div>
 
               <form id="robloxSettingsForm" class="form-grid">
                 <div class="form-group">
-                  <label for="setCreatorType">Tipe Creator Default</label>
+                  <label for="setCreatorType">Tipe Pemilik Aset (Owner)</label>
                   <select id="setCreatorType" class="input-control">
+                    <option value="User">Personal User (Akun Pribadi)</option>
                     <option value="Group">Group Studio</option>
-                    <option value="User">Personal User</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="setCreatorId">Default Creator / Group ID</label>
-                  <input type="text" id="setCreatorId" class="input-control" value="12094812" required>
+                  <label for="setCreatorId">Roblox User ID / Group ID Kamu (Wajib ID Asli)</label>
+                  <input type="text" id="setCreatorId" class="input-control" value="48291049" placeholder="Contoh: 123456789" required>
+                </div>
+                <div class="form-group full-width">
+                  <label for="setOpenCloudKey">Roblox Open Cloud API Key (Utama — Untuk Semua Aset: Animation .rbxm, Audio .ogg/.mp3, Decal .png, Model)</label>
+                  <input type="password" id="setOpenCloudKey" class="input-control mono-text" placeholder="Paste Open Cloud API Key (Awali dengan Secret Key dari create.roblox.com/dashboard/credentials)">
+                </div>
+                <div class="form-group full-width">
+                  <label for="setRobloxCookie">.ROBLOSECURITY Cookie (Opsional / Tidak Wajib — Kosongkan saja jika sudah pakai Open Cloud API Key)</label>
+                  <input type="password" id="setRobloxCookie" class="input-control mono-text" placeholder="Opsional: Boleh dikosongkan">
                 </div>
                 <div class="form-group">
                   <label for="setDefaultRig">Default Animation Rig</label>
@@ -831,28 +839,34 @@
                   </label>
                 </div>
                 <div class="form-group full-width">
-                  <button type="submit" class="btn-primary">Simpan Pengaturan</button>
+                  <div class="btn-row">
+                    <button type="submit" class="btn-primary">Simpan &amp; Aktifkan Direct Upload Roblox</button>
+                    <button type="button" class="btn-secondary" id="verifyRobloxCredsBtn">Tes Koneksi Open Cloud API</button>
+                  </div>
                 </div>
               </form>
             </div>
 
             <div class="panel">
               <div class="panel-heading">
-                <div><h2>Status Railway &amp; Direct Upload Roblox</h2><p>Koneksi otomatis ke Roblox Open Cloud v1 Assets API.</p></div>
-                <span class="good" id="settingsOpenCloudBadge">● Ready</span>
+                <div><h2>Status Direct Upload &amp; Railway</h2><p>Cukup gunakan Open Cloud API Key tanpa Cookie!</p></div>
+                <span class="good" id="settingsOpenCloudBadge">● Cek Kredensial</span>
               </div>
-              <div class="status-line"><span>Mode Upload Roblox</span><strong class="good" id="settingsUploadModeText">Direct Open Cloud / Registry</strong></div>
-              <div class="status-line"><span>Target Creator Aktif</span><strong id="settingsSummaryCreator">Group #12094812</strong></div>
+              <div class="status-line"><span>Status Kredensial Aktif</span><strong class="good" id="settingsUploadModeText">Belum Diisi</strong></div>
+              <div class="status-line"><span>Target Creator Aktif</span><strong id="settingsSummaryCreator">User #48291049</strong></div>
               <div class="status-line"><span>Preset Animasi Default</span><strong id="settingsSummaryRig">R15 · Action</strong></div>
-              <div class="status-line"><span>Railway Build Config</span><strong class="good">nixpacks.toml + railway.json</strong></div>
               <div class="code-header" style="margin-top:14px;">
-                <span>Variabel Environment di Railway (Tab Variables)</span>
+                <span>Cara Mengaktifkan Direct Upload (Tanpa Cookie):</span>
               </div>
-              <pre class="code-block" style="max-height:145px;">ROBLOX_API_KEY=isi_open_cloud_api_key_kamu
-ROBLOX_CREATOR_TYPE=Group
-ROBLOX_CREATOR_ID=12094812
-GEMINI_API_KEY=isi_gemini_api_key_kamu</pre>
-              <div class="status-foot">Saat <strong>ROBLOX_API_KEY</strong> diisi pada tab <strong>Variables</strong> di Railway, setiap file yang kamu upload di halaman <strong>Roblox Spoofer</strong> &amp; <strong>Roblox Publishing</strong> akan langsung di-push ke inventori Group/User Roblox kamu melalui endpoint resmi <code>apis.roblox.com/assets/v1/assets</code>.</div>
+              <pre class="code-block" style="max-height:195px;white-space:pre-wrap;">1. ISI USER ID / GROUP ID ASLI KAMU:
+   Buka profil Roblox kamu di browser, salin angka ID dari URL (contoh: roblox.com/users/123456789/profile), lalu tempel di kolom "Roblox User ID / Group ID".
+
+2. ISI ROBLOX OPEN CLOUD API KEY:
+   Buat di create.roblox.com/dashboard/credentials → pilih "Assets API" (Read &amp; Write) → bagian IP isi 0.0.0.0/0 → tempel API Key di samping lalu klik "Simpan &amp; Aktifkan Direct Upload Roblox".
+
+3. MENDUKUNG SEMUA ASET (.rbxm, .ogg, .mp3, .wav, .png):
+   Sistem otomatis mengemas file .rbxm / .rbxmx / animasi ke format Open Cloud (model/x-rbxm) sehingga langsung masuk ke inventori Roblox kamu tanpa memerlukan .ROBLOSECURITY!</pre>
+              <div class="status-foot">Kamu bisa langsung mengisi <strong>Open Cloud API Key</strong> &amp; <strong>User/Group ID</strong> di form sebelah kiri lalu klik <strong>Simpan</strong>, atau menaruhnya di tab <strong>Variables</strong> pada Railway (<code>ROBLOX_API_KEY</code> &amp; <code>ROBLOX_CREATOR_ID</code>).</div>
             </div>
           </div>
         </div>

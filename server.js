@@ -105,13 +105,15 @@ const state = {
     }
   },
   settings: {
-    creatorType: process.env.ROBLOX_CREATOR_TYPE || "Group",
-    creatorId: process.env.ROBLOX_CREATOR_ID || "12094812",
+    creatorType: process.env.ROBLOX_CREATOR_TYPE || "User",
+    creatorId: process.env.ROBLOX_CREATOR_ID || "48291049",
     defaultRig: "R15",
     defaultPriority: "Action",
     autoExportHistory: true,
     webhookNotifications: false,
     webhookUrl: process.env.DISCORD_WEBHOOK_URL || "",
+    openCloudKey: process.env.ROBLOX_API_KEY || "",
+    robloxCookie: process.env.ROBLOX_COOKIE || "",
     openCloudConnected: Boolean(process.env.ROBLOX_API_KEY || process.env.ROBLOX_COOKIE),
     liveUploadMode: Boolean(process.env.ROBLOX_API_KEY || process.env.ROBLOX_COOKIE) ? "live" : "auto"
   },
@@ -142,41 +144,161 @@ function addHistory(tool, action, detail, status = "Success") {
   return item;
 }
 
-// Helper: Upload asset directly to Roblox Open Cloud v1 Assets API if ROBLOX_API_KEY is configured
-async function uploadToRobloxOpenCloud({ name, description, assetType, creatorType, creatorId, fileBuffer, fileName, mimeType }) {
-  const openCloudKey = process.env.ROBLOX_API_KEY;
-  if (!openCloudKey) {
-    return { liveUploaded: false, reason: "ROBLOX_API_KEY belum diset di Railway Variables" };
+// Build a minimal valid KeyframeSequence .rbxmx XML payload if user spoofs by ID and binary isn't attached
+function createDefaultAnimationRbxmx(name) {
+  const safeName = String(name || "Sakura_Animation").replace(/[<>&"']/g, "");
+  const xml = `<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+  <External>null</External>
+  <External>nil</External>
+  <Item class="KeyframeSequence" referent="RBX0">
+    <Properties>
+      <string name="Name">${safeName}</string>
+      <bool name="Loop">false</bool>
+      <token name="Priority">2</token>
+    </Properties>
+    <Item class="Keyframe" referent="RBX1">
+      <Properties>
+        <string name="Name">Keyframe</string>
+        <float name="Time">0</float>
+      </Properties>
+    </Item>
+  </Item>
+</roblox>`;
+  return Buffer.from(xml, "utf-8");
+}
+
+// Fetch raw asset binary from Roblox AssetDelivery (supports Open Cloud x-api-key or public AssetDelivery v1)
+async function fetchRobloxAssetBinary(assetId, openCloudKey, cookie) {
+  const cleanId = String(assetId || "").replace(/\D/g, "");
+  if (!cleanId) return null;
+
+  // 1. Try Open Cloud AssetDelivery v1 if API key is provided
+  if (openCloudKey) {
+    try {
+      const ocRes = await fetch(`https://apis.roblox.com/asset-delivery-api/v1/assetId/${cleanId}`, {
+        headers: {
+          "x-api-key": openCloudKey,
+          "Accept": "*/*"
+        },
+        redirect: "follow"
+      });
+      if (ocRes.ok) {
+        const contentType = ocRes.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const j = await ocRes.json().catch(() => ({}));
+          if (j.location) {
+            const locRes = await fetch(j.location);
+            if (locRes.ok) {
+              const ab = await locRes.arrayBuffer();
+              if (ab && ab.byteLength > 16) return Buffer.from(ab);
+            }
+          }
+        } else {
+          const ab = await ocRes.arrayBuffer();
+          if (ab && ab.byteLength > 16) return Buffer.from(ab);
+        }
+      }
+    } catch {}
   }
 
-  const rbxTypeMap = {
-    Animation: "Animation",
-    Audio: "Audio",
-    Decal: "Decal",
-    Model: "Model"
+  // 2. Try standard AssetDelivery v1 (works for public assets or with optional cookie)
+  const headers = {
+    "User-Agent": "RobloxStudio/WinInet",
+    "Accept": "*/*"
   };
-  const rbxAssetType = rbxTypeMap[assetType] || "Audio";
+  if (cookie) {
+    const cleanCookie = cookie.replace(/^_?\.?ROBLOSECURITY=/i, "").trim();
+    headers["Cookie"] = `.ROBLOSECURITY=${cleanCookie}`;
+  }
+  try {
+    const res = await fetch(`https://assetdelivery.roblox.com/v1/asset/?id=${cleanId}`, {
+      headers,
+      redirect: "follow"
+    });
+    if (res.ok) {
+      const ab = await res.arrayBuffer();
+      if (ab && ab.byteLength > 16) {
+        return Buffer.from(ab);
+      }
+    }
+  } catch {}
+  return null;
+}
 
-  const creationContext = {
-    creator: creatorType === "User"
-      ? { userId: String(creatorId) }
-      : { groupId: String(creatorId) }
+// Upload Animation or Asset via Roblox Studio publish API (optional fallback if user provides .ROBLOSECURITY cookie)
+async function uploadViaRobloxCookie({ name, description, assetType, creatorType, creatorId, fileBuffer, cookie }) {
+  const cleanCookie = String(cookie || "").replace(/^_?\.?ROBLOSECURITY=/i, "").trim();
+  if (!cleanCookie) {
+    throw new Error("Cookie .ROBLOSECURITY belum diisi.");
+  }
+
+  const rbxTypeName = assetType === "Audio" ? "Audio" : assetType === "Decal" ? "Decal" : assetType === "Model" ? "Model" : "Animation";
+  const groupParam = creatorType === "Group" && creatorId ? `&groupId=${encodeURIComponent(creatorId)}` : "";
+  const uploadUrl = `https://www.roblox.com/ide/publish/UploadNewAnimation?assetTypeName=${encodeURIComponent(rbxTypeName)}&name=${encodeURIComponent(String(name).slice(0, 50))}&description=${encodeURIComponent(String(description || "Uploaded via Sakurayama").slice(0, 200))}&AllID=1&ispublic=False&allowComments=True&isGamesAsset=False${groupParam}`;
+
+  const bodyBytes = fileBuffer || createDefaultAnimationRbxmx(name);
+
+  let csrfToken = "";
+  const firstRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Cookie": `.ROBLOSECURITY=${cleanCookie}`,
+      "User-Agent": "RobloxStudio/WinInet",
+      "Content-Type": "application/xml"
+    },
+    body: bodyBytes
+  });
+
+  if (firstRes.status === 403) {
+    csrfToken = firstRes.headers.get("x-csrf-token") || "";
+  } else if (firstRes.ok) {
+    const text = (await firstRes.text()).trim();
+    if (/^\d+$/.test(text)) {
+      return { liveUploaded: true, assetId: text, method: "Roblox Studio API" };
+    }
+  }
+
+  if (!csrfToken) {
+    const errText = await firstRes.text().catch(() => "");
+    throw new Error(`Roblox Auth gagal (HTTP ${firstRes.status}): ${errText.slice(0, 120)}`);
+  }
+
+  const secondRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Cookie": `.ROBLOSECURITY=${cleanCookie}`,
+      "X-CSRF-TOKEN": csrfToken,
+      "User-Agent": "RobloxStudio/WinInet",
+      "Content-Type": "application/xml"
+    },
+    body: bodyBytes
+  });
+
+  const respText = (await secondRes.text()).trim();
+  if (!secondRes.ok || !/^\d+$/.test(respText)) {
+    throw new Error(`Gagal upload ke Roblox (HTTP ${secondRes.status}): ${respText.slice(0, 140)}`);
+  }
+
+  return {
+    liveUploaded: true,
+    assetId: respText,
+    method: "Roblox Studio API"
   };
+}
 
+// Helper to send a single multipart upload to Roblox Open Cloud v1 Assets API and poll operation
+async function postToRobloxOpenCloudV1({ openCloudKey, rbxAssetType, displayName, description, creationContext, payloadBytes, strictMime, fileName }) {
   const requestJson = JSON.stringify({
     assetType: rbxAssetType,
-    displayName: String(name).slice(0, 50),
-    description: String(description || `Uploaded via Sakurayama Dashboard (${name})`).slice(0, 1000),
+    displayName: String(displayName).slice(0, 50),
+    description: String(description || `Uploaded via Sakurayama Dashboard (${displayName})`).slice(0, 1000),
     creationContext
   });
 
-  // Construct multipart/form-data for https://apis.roblox.com/assets/v1/assets
   const formData = new FormData();
   formData.append("request", requestJson);
-
-  const payloadBytes = fileBuffer || Buffer.from("SAKURAYAMA_ASSET_DATA");
-  const blob = new Blob([payloadBytes], { type: mimeType || "application/octet-stream" });
-  formData.append("fileContent", blob, fileName || `${name}.rbxm`);
+  const blob = new Blob([payloadBytes], { type: strictMime });
+  formData.append("fileContent", blob, fileName);
 
   const response = await fetch("https://apis.roblox.com/assets/v1/assets", {
     method: "POST",
@@ -188,40 +310,197 @@ async function uploadToRobloxOpenCloud({ name, description, assetType, creatorTy
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.message || data.error || `Roblox Open Cloud HTTP ${response.status}`);
+    const errMsg = data.message || data.error || JSON.stringify(data);
+    const err = new Error(`Roblox Open Cloud (HTTP ${response.status}): ${errMsg}`);
+    err.status = response.status;
+    throw err;
   }
 
-  // Open Cloud returns an Operation object { path: "operations/...", done: boolean, response: { assetId: "..." } }
   let finalAssetId = data.response?.assetId || data.assetId || null;
   const opPath = data.path;
 
   if (!finalAssetId && opPath) {
-    for (let attempt = 0; attempt < 6; attempt++) {
+    const cleanOpPath = opPath.replace(/^\/+/, "");
+    const opUrl = cleanOpPath.startsWith("operations/")
+      ? `https://apis.roblox.com/assets/v1/${cleanOpPath}`
+      : `https://apis.roblox.com/assets/v1/operations/${cleanOpPath}`;
+
+    for (let attempt = 0; attempt < 12; attempt++) {
       await new Promise(r => setTimeout(r, 1200));
-      const opRes = await fetch(`https://apis.roblox.com/assets/v1/${opPath}`, {
+      const opRes = await fetch(opUrl, {
         headers: { "x-api-key": openCloudKey }
       });
       if (opRes.ok) {
         const opData = await opRes.json().catch(() => ({}));
-        if (opData.done && opData.response?.assetId) {
-          finalAssetId = opData.response.assetId;
-          break;
+        if (opData.done) {
+          if (opData.error) {
+            throw new Error(`Roblox Processing Error: ${opData.error.message || JSON.stringify(opData.error)}`);
+          }
+          if (opData.response?.assetId) {
+            finalAssetId = String(opData.response.assetId);
+            break;
+          }
         }
       }
     }
   }
 
+  if (!finalAssetId) {
+    throw new Error("Upload terkirim ke Roblox Open Cloud tetapi Operation belum mengembalikan Asset ID.");
+  }
+
   return {
     liveUploaded: true,
-    assetId: finalAssetId || ("18" + Math.floor(100000000 + Math.random() * 899999999).toString()),
-    operationPath: opPath || null
+    assetId: finalAssetId,
+    method: `Open Cloud v1 (${rbxAssetType})`
   };
 }
 
-// Get full dashboard state
+// Direct Upload to Roblox using ONLY Open Cloud API Key (supports Animation .rbxm/.rbxmx, Model, Audio, Decal)
+async function uploadToRobloxDirect({ name, description, assetType, creatorType, creatorId, fileBuffer, fileName, mimeType, originalAssetId }) {
+  const openCloudKey = (state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim();
+  const robloxCookie = (state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim();
+
+  if (!openCloudKey && !robloxCookie) {
+    throw new Error("ROBLOX_API_KEY (Open Cloud API Key) belum diisi! Silakan masukkan Open Cloud API Key beserta User/Group ID asli kamu di menu Roblox Settings (atau di Railway Variables).");
+  }
+
+  // Ensure we have binary payload: if user didn't attach a file, fetch from Roblox AssetDelivery or generate valid .rbxmx
+  let payloadBytes = fileBuffer;
+  if (!payloadBytes && originalAssetId) {
+    payloadBytes = await fetchRobloxAssetBinary(originalAssetId, openCloudKey, robloxCookie);
+  }
+  if (!payloadBytes && (assetType === "Animation" || assetType === "Model")) {
+    payloadBytes = createDefaultAnimationRbxmx(name);
+    fileName = fileName || `${name}.rbxmx`;
+  }
+
+  // Primary Path: Pure Roblox Open Cloud API Key (NO .ROBLOSECURITY cookie needed!)
+  if (openCloudKey) {
+    if (!payloadBytes) {
+      throw new Error("Silakan pilih file aset (.rbxm, .rbxmx, .ogg, .mp3, .wav, .png, .fbx) terlebih dahulu untuk di-upload.");
+    }
+
+    const cleanNumericId = String(creatorId || "").replace(/\D/g, "");
+    if (!cleanNumericId) {
+      throw new Error("Creator ID / Group ID wajib berupa angka ID Roblox kamu yang asli.");
+    }
+
+    const creationContext = {
+      creator: creatorType === "User"
+        ? { userId: cleanNumericId }
+        : { groupId: cleanNumericId }
+    };
+
+    const ext = String(fileName || "").split(".").pop().toLowerCase();
+
+    // Detect if payload is XML (.rbxmx) vs binary (.rbxm) by checking first bytes
+    const headerStr = payloadBytes.slice(0, 32).toString("utf-8").trim();
+    const isXmlRbxm = ext === "rbxmx" || (headerStr.startsWith("<roblox") && !headerStr.startsWith("<roblox!"));
+
+    if (assetType === "Animation" || assetType === "Model" || ext === "rbxm" || ext === "rbxmx") {
+      const rbxMime = isXmlRbxm ? "model/x-rbxm" : "model/x-rbxm";
+      const safeFileName = fileName || `${name}.${isXmlRbxm ? "rbxmx" : "rbxm"}`;
+
+      // Try uploading via Open Cloud v1 as Model (which natively accepts .rbxm / .rbxmx packages including KeyframeSequence)
+      // or Animation if supported by the key's endpoint
+      try {
+        return await postToRobloxOpenCloudV1({
+          openCloudKey,
+          rbxAssetType: "Model",
+          displayName: name,
+          description,
+          creationContext,
+          payloadBytes,
+          strictMime: rbxMime,
+          fileName: safeFileName
+        });
+      } catch (firstErr) {
+        // Fallback attempt with application/octet-stream or Animation assetType
+        try {
+          return await postToRobloxOpenCloudV1({
+            openCloudKey,
+            rbxAssetType: "Animation",
+            displayName: name,
+            description,
+            creationContext,
+            payloadBytes,
+            strictMime: "model/x-rbxm",
+            fileName: safeFileName
+          });
+        } catch {
+          // If optional cookie is also configured, try cookie fallback; otherwise throw the exact Open Cloud error
+          if (robloxCookie) {
+            return await uploadViaRobloxCookie({
+              name,
+              description,
+              assetType: "Animation",
+              creatorType,
+              creatorId,
+              fileBuffer: payloadBytes,
+              cookie: robloxCookie
+            });
+          }
+          throw firstErr;
+        }
+      }
+    }
+
+    const rbxTypeMap = {
+      Audio: "Audio",
+      Decal: "Decal",
+      Model: "Model"
+    };
+    const rbxAssetType = rbxTypeMap[assetType] || "Audio";
+
+    let strictMime = "audio/ogg";
+    if (rbxAssetType === "Audio") {
+      strictMime = ext === "mp3" ? "audio/mpeg" : ext === "wav" ? "audio/wav" : "audio/ogg";
+    } else if (rbxAssetType === "Decal") {
+      strictMime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
+    } else if (rbxAssetType === "Model") {
+      strictMime = ext === "fbx" ? "model/fbx" : "model/x-rbxm";
+    }
+
+    return await postToRobloxOpenCloudV1({
+      openCloudKey,
+      rbxAssetType,
+      displayName: name,
+      description,
+      creationContext,
+      payloadBytes,
+      strictMime,
+      fileName: fileName || `${name}.${ext || "ogg"}`
+    });
+  }
+
+  // Secondary Path: If only Cookie was provided
+  return await uploadViaRobloxCookie({
+    name,
+    description,
+    assetType,
+    creatorType,
+    creatorId,
+    fileBuffer: payloadBytes,
+    cookie: robloxCookie
+  });
+}
+
+// Get full dashboard state (mask sensitive keys before sending to client)
 app.get("/api/state", (req, res) => {
-  state.settings.openCloudConnected = Boolean(process.env.ROBLOX_API_KEY || process.env.ROBLOX_COOKIE);
-  res.json(state);
+  const hasKey = Boolean((state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim());
+  const hasCookie = Boolean((state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim());
+  state.settings.openCloudConnected = hasKey || hasCookie;
+  res.json({
+    ...state,
+    settings: {
+      ...state.settings,
+      hasOpenCloudKey: hasKey,
+      hasRobloxCookie: hasCookie,
+      openCloudKey: hasKey ? "••••••••••••••••" : "",
+      robloxCookie: hasCookie ? "••••••••••••••••" : ""
+    }
+  });
 });
 
 // Log history or clear history
@@ -537,21 +816,28 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// Roblox Spoofer endpoint (supports direct upload to Roblox Open Cloud if ROBLOX_API_KEY is set)
+// Roblox Spoofer endpoint (supports direct upload to Roblox Inventory when credentials are configured)
 app.post("/api/roblox/spoof", async (req, res) => {
   const { assetId, assetType, rigType, priority, loop, scaleSpeed, customName, fileBase64, fileName, mimeType, directUpload } = req.body || {};
-  if (!assetId) {
-    return res.status(400).json({ error: "Masukkan Asset ID atau file terlebih dahulu." });
+  if (!assetId && !fileBase64) {
+    return res.status(400).json({ error: "Masukkan Asset ID atau pilih file terlebih dahulu." });
   }
 
-  const cleanId = String(assetId).replace(/\D/g, "") || "1049281920";
+  const cleanId = String(assetId || "").replace(/\D/g, "") || "1049281920";
   let newNumericId = "99" + Math.floor(100000000 + Math.random() * 899999999).toString();
-  let uploadModeLabel = "Local Studio Registry";
+  let uploadModeLabel = "Simulasi Lokal (Kredensial Belum Diisi)";
+  let liveUploaded = false;
+  let liveUploadError = null;
 
-  if ((directUpload !== false) && process.env.ROBLOX_API_KEY) {
+  const hasLiveCredentials = Boolean(
+    (state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim() ||
+    (state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim()
+  );
+
+  if (directUpload !== false && hasLiveCredentials) {
     try {
       const fileBuffer = fileBase64 ? Buffer.from(fileBase64, "base64") : null;
-      const cloudRes = await uploadToRobloxOpenCloud({
+      const cloudRes = await uploadToRobloxDirect({
         name: customName || `Sakura_Spoof_${cleanId}`,
         description: `Spoofed & Re-hashed via Sakurayama (${rigType || "R15"} / ${priority || "Action"})`,
         assetType: assetType || "Animation",
@@ -559,15 +845,20 @@ app.post("/api/roblox/spoof", async (req, res) => {
         creatorId: state.settings.creatorId,
         fileBuffer,
         fileName: fileName || `${customName || "Sakura_Anim"}.rbxm`,
-        mimeType
+        mimeType,
+        originalAssetId: cleanId
       });
       if (cloudRes.liveUploaded && cloudRes.assetId) {
         newNumericId = String(cloudRes.assetId);
-        uploadModeLabel = "Live Roblox Open Cloud";
+        liveUploaded = true;
+        uploadModeLabel = `Live di Inventori Roblox (${cloudRes.method})`;
       }
     } catch (cloudErr) {
-      uploadModeLabel = `Fallback Registry (${cloudErr.message})`;
+      liveUploadError = cloudErr.message;
+      uploadModeLabel = "Gagal Live Upload ke Roblox";
     }
+  } else if (directUpload !== false && !hasLiveCredentials) {
+    liveUploadError = "Kredensial Roblox belum disimpan! Buka menu 'Roblox Settings' dan isi User/Group ID asli + Open Cloud API Key (untuk Audio/Decal) atau .ROBLOSECURITY Cookie (untuk Animation) agar aset masuk ke inventori Roblox kamu.";
   }
 
   const hashSignature = Buffer.from(`${cleanId}:${rigType}:${priority}:${Date.now()}`).toString("base64").slice(0, 24);
@@ -581,7 +872,7 @@ local Players = game:GetService("Players")
 local ContentProvider = game:GetService("ContentProvider")
 
 local ASSET_URI = "rbxassetid://${newNumericId}"
-local ASSET_NAME = "${(customName || "Sakurayama_Spoofed_Asset").replace(/"/g, '\\"')}"
+local ASSET_NAME = "${(customName || "Sakura_Spoofed_Asset").replace(/"/g, '\\"')}"
 
 local animation = Instance.new("Animation")
 animation.Name = ASSET_NAME
@@ -605,12 +896,26 @@ return {
 \tPlay = playOnCharacter
 }`;
 
+  if (liveUploaded) {
+    const assetRecord = {
+      id: newNumericId,
+      name: customName || `Sakura_Spoof_${cleanId}`,
+      description: `Spoofed via Sakurayama (${rigType || "R15"})`,
+      type: assetType || "Animation",
+      creatorType: state.settings.creatorType,
+      creatorId: state.settings.creatorId,
+      status: uploadModeLabel,
+      createdAt: new Date().toISOString()
+    };
+    state.publishedAssets.unshift(assetRecord);
+  }
+
   state.apiUsage.robloxUsed += 1;
   const histItem = addHistory(
     "Roblox Spoofer",
     `Spoof ${assetType || "Animation"} (${uploadModeLabel})`,
     `${customName || cleanId} → rbxassetid://${newNumericId} (${rigType || "R15"}, ${priority || "Action"})`,
-    "Success"
+    liveUploaded ? "Success" : "Warning"
   );
 
   res.json({
@@ -619,6 +924,8 @@ return {
     assetUri: `rbxassetid://${newNumericId}`,
     signature: hashSignature,
     uploadMode: uploadModeLabel,
+    liveUploaded,
+    liveUploadError,
     rigType: rigType || "R15",
     priority: priority || "Action",
     luauSnippet,
@@ -743,7 +1050,7 @@ return {
   });
 });
 
-// Roblox Publishing endpoint (Single - supports direct Roblox Open Cloud API upload)
+// Roblox Publishing endpoint (Single - performs real upload to Roblox Inventory)
 app.post("/api/roblox/publish", async (req, res) => {
   const { name, description, type, creatorType, creatorId, allowComments, fileBase64, fileName, mimeType } = req.body || {};
   if (!name || !name.trim()) {
@@ -753,13 +1060,19 @@ app.post("/api/roblox/publish", async (req, res) => {
   const cType = creatorType || state.settings.creatorType;
   const cId = creatorId || state.settings.creatorId;
   const aType = type || "Animation";
-  let newAssetId = "18" + Math.floor(100000000 + Math.random() * 899999999).toString();
-  let statusLabel = "Published (Registry)";
 
-  if (process.env.ROBLOX_API_KEY) {
+  const hasLiveCredentials = Boolean(
+    (state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim() ||
+    (state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim()
+  );
+
+  let newAssetId = "";
+  let statusLabel = "";
+
+  if (hasLiveCredentials) {
     try {
       const fileBuffer = fileBase64 ? Buffer.from(fileBase64, "base64") : null;
-      const cloudRes = await uploadToRobloxOpenCloud({
+      const cloudRes = await uploadToRobloxDirect({
         name: name.trim(),
         description: (description || `Uploaded via Sakurayama Dashboard (${name.trim()})`).trim(),
         assetType: aType,
@@ -771,11 +1084,17 @@ app.post("/api/roblox/publish", async (req, res) => {
       });
       if (cloudRes.liveUploaded && cloudRes.assetId) {
         newAssetId = String(cloudRes.assetId);
-        statusLabel = "Live on Roblox Cloud";
+        statusLabel = `Live di Roblox (${cloudRes.method})`;
       }
     } catch (cloudErr) {
-      statusLabel = `Published (Cloud Note: ${cloudErr.message.slice(0, 40)})`;
+      return res.status(400).json({
+        error: cloudErr.message
+      });
     }
+  } else {
+    return res.status(400).json({
+      error: "Kredensial belum disimpan! Buka menu 'Roblox Settings', masukkan User/Group ID asli kamu beserta Open Cloud API Key (untuk Audio/Decal/Model) atau .ROBLOSECURITY Cookie (untuk Animation), lalu klik Simpan!"
+    });
   }
 
   const assetRecord = {
@@ -818,7 +1137,7 @@ app.post("/api/roblox/publish", async (req, res) => {
   });
 });
 
-// Roblox Mass / Batch Publishing endpoint (supports 1,000+ assets named automatically after uploaded files)
+// Roblox Mass / Batch Publishing endpoint
 app.post("/api/roblox/publish-batch", async (req, res) => {
   const { items, type, creatorType, creatorId, description } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
@@ -830,19 +1149,24 @@ app.post("/api/roblox/publish-batch", async (req, res) => {
   const cId = creatorId || state.settings.creatorId;
   const defaultType = type || "Animation";
   const createdAssets = [];
-  const hasLiveKey = Boolean(process.env.ROBLOX_API_KEY);
+  const hasLiveCredentials = Boolean(
+    (state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim() ||
+    (state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim()
+  );
+
+  let liveSuccessCount = 0;
+  let lastLiveError = null;
 
   for (let i = maxItems.length - 1; i >= 0; i--) {
     const rawItem = maxItems[i];
     const cleanName = String(rawItem.name || `Sakura_Asset_${i + 1}`).replace(/\.[^/.]+$/, "").trim();
     const itemType = rawItem.type || defaultType;
     let newAssetId = "18" + Math.floor(100000000 + Math.random() * 899999999).toString();
-    let statusLabel = hasLiveKey ? "Published (Open Cloud)" : "Published";
+    let statusLabel = "Local Registry (Tanpa File Binary)";
 
-    // If small batch (<= 10) and live key is present with fileBase64, attempt live Open Cloud upload
-    if (hasLiveKey && maxItems.length <= 10 && rawItem.fileBase64) {
+    if (hasLiveCredentials && maxItems.length <= 25 && rawItem.fileBase64) {
       try {
-        const cloudRes = await uploadToRobloxOpenCloud({
+        const cloudRes = await uploadToRobloxDirect({
           name: cleanName,
           description: (description || `Published via Sakurayama Mass Publisher (${cleanName})`).trim(),
           assetType: itemType,
@@ -854,9 +1178,13 @@ app.post("/api/roblox/publish-batch", async (req, res) => {
         });
         if (cloudRes.liveUploaded && cloudRes.assetId) {
           newAssetId = String(cloudRes.assetId);
-          statusLabel = "Live on Roblox Cloud";
+          statusLabel = `Live (${cloudRes.method})`;
+          liveSuccessCount++;
         }
-      } catch {}
+      } catch (err) {
+        lastLiveError = err.message;
+        statusLabel = "Gagal Live Upload";
+      }
     }
 
     const assetRecord = {
@@ -893,12 +1221,14 @@ app.post("/api/roblox/publish-batch", async (req, res) => {
   const histItem = addHistory(
     "Roblox Publishing",
     `Mass Publish (${createdAssets.length} Assets)`,
-    `${createdAssets.length} aset dipublikasikan sesuai nama file ke ${cType} #${cId}`,
-    "Success"
+    `${createdAssets.length} aset diproses (${liveSuccessCount} Live Uploaded) ke ${cType} #${cId}`,
+    lastLiveError && liveSuccessCount === 0 ? "Warning" : "Success"
   );
 
   res.json({
     count: createdAssets.length,
+    liveSuccessCount,
+    lastLiveError,
     assets: createdAssets,
     historyItem: histItem,
     apiUsage: state.apiUsage
@@ -994,27 +1324,148 @@ app.delete("/api/roblox/permissions/:assetId/revoke/:placeId", (req, res) => {
   });
 });
 
-// Roblox Settings endpoint
-app.post("/api/roblox/settings", (req, res) => {
+// Verify Roblox Cookie / Open Cloud Key and auto-detect authenticated User ID & Username
+app.post("/api/roblox/verify-credentials", async (req, res) => {
+  const { openCloudKey, robloxCookie, creatorType, creatorId } = req.body || {};
+  const activeKey = (openCloudKey && !openCloudKey.includes("•") ? openCloudKey : state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim();
+  const activeCookie = (robloxCookie && !robloxCookie.includes("•") ? robloxCookie : state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim();
+
+  if (!activeKey && !activeCookie) {
+    return res.status(400).json({
+      ok: false,
+      error: "Masukkan minimal salah satu: Open Cloud API Key atau .ROBLOSECURITY Cookie terlebih dahulu."
+    });
+  }
+
+  const results = {
+    ok: false,
+    cookieValid: false,
+    openCloudConfigured: Boolean(activeKey),
+    detectedUser: null,
+    message: ""
+  };
+
+  if (activeCookie) {
+    const cleanCookie = activeCookie.replace(/^_?\.?ROBLOSECURITY=/i, "").trim();
+    try {
+      const authRes = await fetch("https://users.roblox.com/v1/users/authenticated", {
+        headers: {
+          "Cookie": `.ROBLOSECURITY=${cleanCookie}`,
+          "User-Agent": "RobloxStudio/WinInet"
+        }
+      });
+      if (authRes.ok) {
+        const userData = await authRes.json();
+        results.cookieValid = true;
+        results.ok = true;
+        results.detectedUser = {
+          id: String(userData.id),
+          name: userData.name,
+          displayName: userData.displayName
+        };
+        // Automatically update creatorId if user is in User mode
+        if ((creatorType || state.settings.creatorType) === "User") {
+          state.settings.creatorId = String(userData.id);
+        }
+        state.settings.robloxCookie = cleanCookie;
+      } else {
+        results.message = `Cookie .ROBLOSECURITY ditolak oleh Roblox (HTTP ${authRes.status}). Pastikan menyalin seluruh teks cookie yang diawali _|WARNING:-DO-NOT-SHARE-THIS...`;
+      }
+    } catch (err) {
+      results.message = `Gagal mengecek Cookie: ${err.message}`;
+    }
+  }
+
+  if (activeKey) {
+    state.settings.openCloudKey = activeKey;
+    results.ok = true;
+  }
+
+  state.settings.openCloudConnected = Boolean(state.settings.openCloudKey || state.settings.robloxCookie);
+
+  if (results.cookieValid && results.detectedUser) {
+    results.message = `Terhubung ke Akun Roblox: @${results.detectedUser.name} (User ID: ${results.detectedUser.id}). Siap Direct Upload semua aset!`;
+  } else if (results.openCloudConfigured) {
+    results.message = `Open Cloud API Key aktif untuk ${creatorType || state.settings.creatorType} #${creatorId || state.settings.creatorId}. Siap Direct Upload Animation (.rbxm), Audio (.ogg/.mp3/.wav), Decal (.png), & Model tanpa Cookie!`;
+  }
+
+  res.json(results);
+});
+
+// Roblox Settings endpoint (allows saving Open Cloud Key, .ROBLOSECURITY Cookie, and Creator ID in runtime)
+app.post("/api/roblox/settings", async (req, res) => {
   const updates = req.body || {};
+
+  // Only overwrite key/cookie if user typed a new value (not masked bullets)
+  let nextKey = state.settings.openCloudKey;
+  if (typeof updates.openCloudKey === "string" && !updates.openCloudKey.includes("•")) {
+    nextKey = updates.openCloudKey.trim();
+  }
+  let nextCookie = state.settings.robloxCookie;
+  if (typeof updates.robloxCookie === "string" && !updates.robloxCookie.includes("•")) {
+    nextCookie = updates.robloxCookie.trim().replace(/^_?\.?ROBLOSECURITY=/i, "").trim();
+  }
+
+  let nextCreatorType = updates.creatorType || state.settings.creatorType;
+  let nextCreatorId = String(updates.creatorId || state.settings.creatorId).replace(/\D/g, "") || state.settings.creatorId;
+  let verifiedUsername = null;
+
+  // If a cookie is present and CreatorType is User, auto-detect real Roblox User ID so user doesn't accidentally leave placeholder ID
+  if (nextCookie) {
+    try {
+      const authRes = await fetch("https://users.roblox.com/v1/users/authenticated", {
+        headers: {
+          "Cookie": `.ROBLOSECURITY=${nextCookie}`,
+          "User-Agent": "RobloxStudio/WinInet"
+        }
+      });
+      if (authRes.ok) {
+        const userData = await authRes.json();
+        if (userData && userData.id) {
+          verifiedUsername = userData.name;
+          if (nextCreatorType === "User" && (!nextCreatorId || nextCreatorId === "48291049" || nextCreatorId === "12094812")) {
+            nextCreatorId = String(userData.id);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  const hasKey = Boolean((nextKey || process.env.ROBLOX_API_KEY || "").trim());
+  const hasCookie = Boolean((nextCookie || process.env.ROBLOX_COOKIE || "").trim());
+
   state.settings = {
     ...state.settings,
-    creatorType: updates.creatorType || state.settings.creatorType,
-    creatorId: String(updates.creatorId || state.settings.creatorId),
+    creatorType: nextCreatorType,
+    creatorId: nextCreatorId,
+    verifiedUsername: verifiedUsername || state.settings.verifiedUsername || null,
     defaultRig: updates.defaultRig || state.settings.defaultRig,
     defaultPriority: updates.defaultPriority || state.settings.defaultPriority,
     autoExportHistory: Boolean(updates.autoExportHistory),
     webhookNotifications: Boolean(updates.webhookNotifications),
     webhookUrl: String(updates.webhookUrl || ""),
-    openCloudConnected: true
+    openCloudKey: nextKey,
+    robloxCookie: nextCookie,
+    openCloudConnected: hasKey || hasCookie
   };
+
   const histItem = addHistory(
     "Roblox Settings",
-    "Update Konfigurasi",
-    `Creator: ${state.settings.creatorType} #${state.settings.creatorId}, Rig: ${state.settings.defaultRig}`,
+    "Update Kredensial & Target",
+    `Creator: ${state.settings.creatorType} #${state.settings.creatorId}${verifiedUsername ? ` (@${verifiedUsername})` : ""} | OpenCloud: ${hasKey ? "Aktif" : "Off"} | Cookie: ${hasCookie ? "Aktif" : "Off"}`,
     "Success"
   );
-  res.json({ settings: state.settings, historyItem: histItem });
+
+  res.json({
+    settings: {
+      ...state.settings,
+      hasOpenCloudKey: hasKey,
+      hasRobloxCookie: hasCookie,
+      openCloudKey: hasKey ? "••••••••••••••••" : "",
+      robloxCookie: hasCookie ? "••••••••••••••••" : ""
+    },
+    historyItem: histItem
+  });
 });
 
 // Upgrade / Change Plan endpoint

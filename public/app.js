@@ -1290,8 +1290,27 @@ document.getElementById("spooferForm").addEventListener("submit", async e => {
     return;
   }
 
-  // Single Spoof Mode
+  // Single Spoof Mode (includes uploaded file binary if user selected a file)
   const customName = document.getElementById("spoofCustomName").value.trim() || "Sakura_Dash_Strike";
+  const singleSpoofFile = spoofSingleFileInput.files?.[0] || null;
+  let spoofFileBase64 = null;
+  let spoofFileName = null;
+  let spoofMimeType = null;
+
+  if (singleSpoofFile && singleSpoofFile.size <= 20 * 1024 * 1024) {
+    try {
+      const buf = await singleSpoofFile.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      spoofFileBase64 = btoa(binary);
+      spoofFileName = singleSpoofFile.name;
+      spoofMimeType = singleSpoofFile.type || "application/octet-stream";
+    } catch {}
+  }
+
   const payload = {
     assetId: document.getElementById("spoofAssetId").value,
     customName,
@@ -1299,7 +1318,10 @@ document.getElementById("spooferForm").addEventListener("submit", async e => {
     rigType: document.getElementById("spoofRigType").value,
     priority: document.getElementById("spoofPriority").value,
     scaleSpeed: Number(spoofSpeed.value),
-    loop: document.getElementById("spoofLoop").checked
+    loop: document.getElementById("spoofLoop").checked,
+    fileBase64: spoofFileBase64,
+    fileName: spoofFileName,
+    mimeType: spoofMimeType
   };
 
   try {
@@ -1327,14 +1349,21 @@ document.getElementById("spooferForm").addEventListener("submit", async e => {
     document.getElementById("spoofKvLabel2").textContent = "Spoofed Asset URI";
     document.getElementById("spoofOutNew").textContent = data.assetUri;
     document.getElementById("spoofOutRig").textContent = `${data.rigType} · ${data.priority}`;
-    document.getElementById("spoofOutHash").textContent = data.signature;
+    document.getElementById("spoofOutHash").textContent = data.uploadMode || data.signature;
     document.getElementById("spoofCodeBlock").textContent = data.luauSnippet;
-    badge.textContent = "SPOOFED";
+    badge.textContent = data.liveUploaded ? "LIVE UPLOADED" : "LOCAL SIMULATED";
 
     if (data.historyItem) appState.history.unshift(data.historyItem);
     if (data.apiUsage) appState.apiUsage = data.apiUsage;
     renderAllViews();
-    showToast(`Aset "${customName}" berhasil di-spoof ke ${data.assetUri}`);
+
+    if (data.liveUploaded) {
+      showToast(`Sukses masuk ke Inventori Roblox kamu! "${customName}" → ${data.assetUri}`);
+    } else if (data.liveUploadError) {
+      showToast(`Belum masuk ke Roblox: ${data.liveUploadError}`);
+    } else {
+      showToast(`Aset "${customName}" di-spoof lokal (${data.assetUri}). Isi Roblox Settings untuk Direct Upload.`);
+    }
   } catch (err) {
     badge.textContent = "ERROR";
     showToast("Terjadi kesalahan koneksi.");
@@ -1419,6 +1448,7 @@ const pubName = document.getElementById("pubName");
 const pubType = document.getElementById("pubType");
 
 let currentPublishMode = "single"; // "single" | "mass"
+let selectedMassPubFilesMap = new Map();
 
 function setPublishMode(mode) {
   currentPublishMode = mode;
@@ -1446,7 +1476,7 @@ pubFile.addEventListener("change", e => {
   showToast(`Nama aset otomatis diisi sesuai nama file: "${cleanName}"`);
 });
 
-// Mass file selection in Publishing -> populates list with exact filenames
+// Mass file selection in Publishing -> populates list with exact filenames and stores File references
 const pubMassFilesInput = document.getElementById("pubMassFilesInput");
 document.getElementById("uploadMassPubFilesBtn").addEventListener("click", () => {
   pubMassFilesInput.click();
@@ -1454,6 +1484,9 @@ document.getElementById("uploadMassPubFilesBtn").addEventListener("click", () =>
 pubMassFilesInput.addEventListener("change", e => {
   const files = Array.from(e.target.files || []);
   if (!files.length) return;
+  files.forEach(f => {
+    selectedMassPubFilesMap.set(stripFileExt(f.name), f);
+  });
   const names = files.map(f => stripFileExt(f.name));
   pubBatchList.value = (pubBatchList.value.trim() ? pubBatchList.value.trim() + "\n" : "") + names.join("\n");
   pubType.value = detectAssetTypeFromExt(files[0].name);
@@ -1497,7 +1530,7 @@ function renderPublishedTable() {
   tbody.innerHTML = appState.publishedAssets.slice(0, 100).map(asset => `
     <tr>
       <td class="mono-text gold-text">rbxassetid://${asset.id}</td>
-      <td><strong>${asset.name}</strong><br><small class="muted-text">${asset.type}</small></td>
+      <td><strong>${asset.name}</strong><br><small class="muted-text">${asset.type} · ${asset.status || "Published"}</small></td>
       <td class="mono-text">${asset.creatorType} #${asset.creatorId}</td>
       <td style="text-align:right;">
         <button type="button" class="btn-secondary compact-btn manage-perm-btn" data-id="${asset.id}">Permission →</button>
@@ -1524,11 +1557,30 @@ document.getElementById("publishForm").addEventListener("submit", async e => {
       lines = (pubBatchList.value || "").split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
     }
 
-    const items = lines.map(line => {
+    const items = [];
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
       const cleanName = stripFileExt(line.split(/[:|,]/)[0]);
       const detectedType = line.includes(".") ? detectAssetTypeFromExt(line) : pubType.value;
-      return { name: cleanName, type: detectedType };
-    });
+      const itemObj = { name: cleanName, type: detectedType };
+
+      // Attach file binary for up to 25 files so Mass Publish can upload directly to Roblox Inventory
+      const matchedFile = selectedMassPubFilesMap.get(cleanName);
+      if (matchedFile && idx < 25 && matchedFile.size <= 10 * 1024 * 1024) {
+        try {
+          const buf = await matchedFile.arrayBuffer();
+          let binary = "";
+          const bytes = new Uint8Array(buf);
+          for (let b = 0; b < bytes.byteLength; b++) {
+            binary += String.fromCharCode(bytes[b]);
+          }
+          itemObj.fileBase64 = btoa(binary);
+          itemObj.fileName = matchedFile.name;
+          itemObj.mimeType = matchedFile.type || "application/octet-stream";
+        } catch {}
+      }
+      items.push(itemObj);
+    }
 
     const res = await fetch("/api/roblox/publish-batch", {
       method: "POST",
@@ -1551,11 +1603,18 @@ document.getElementById("publishForm").addEventListener("submit", async e => {
     if (data.historyItem) appState.history.unshift(data.historyItem);
     if (data.apiUsage) appState.apiUsage = data.apiUsage;
     renderAllViews();
-    showToast(`Sukses! ${data.count.toLocaleString("id-ID")} aset berhasil di-publish sesuai nama filenya.`);
+
+    if (data.lastLiveError && !data.liveSuccessCount) {
+      showToast(`Perhatian: ${data.lastLiveError}`);
+    } else if (data.liveSuccessCount > 0) {
+      showToast(`Sukses! ${data.liveSuccessCount} file berhasil masuk ke Inventori Roblox kamu!`);
+    } else {
+      showToast(`${data.count.toLocaleString("id-ID")} aset diproses. Untuk masuk ke Inventori Roblox, pastikan pilih file asli & isi Roblox Settings.`);
+    }
     return;
   }
 
-  // Single Publish (includes actual file bytes for Direct Roblox Open Cloud Upload)
+  // Single Publish (includes actual file bytes for Direct Roblox Open Cloud / Cookie Upload)
   let finalName = pubName.value.trim();
   const uploadedFile = pubFile.files?.[0] || null;
   if (!finalName && uploadedFile) {
@@ -1585,36 +1644,46 @@ document.getElementById("publishForm").addEventListener("submit", async e => {
     } catch {}
   }
 
-  const payload = {
-    name: finalName,
-    type: pubType.value,
-    creatorType: document.getElementById("pubCreatorType").value,
-    creatorId: document.getElementById("pubCreatorId").value,
-    description: document.getElementById("pubDesc").value || `Uploaded file: ${finalName}`,
-    fileBase64,
-    fileName,
-    mimeType
-  };
+  const submitBtn = document.getElementById("publishSubmitBtn");
+  const prevBtnText = submitBtn.textContent;
+  submitBtn.textContent = "Mengunggah ke Server Roblox...";
+  submitBtn.disabled = true;
 
-  const res = await fetch("/api/roblox/publish", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    showToast(data.error || "Gagal mempublikasikan aset.");
-    return;
+  try {
+    const payload = {
+      name: finalName,
+      type: pubType.value,
+      creatorType: document.getElementById("pubCreatorType").value,
+      creatorId: document.getElementById("pubCreatorId").value,
+      description: document.getElementById("pubDesc").value || `Uploaded file: ${finalName}`,
+      fileBase64,
+      fileName,
+      mimeType
+    };
+
+    const res = await fetch("/api/roblox/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error || "Gagal mempublikasikan aset ke Roblox.");
+      return;
+    }
+
+    appState.publishedAssets.unshift(data.asset);
+    if (data.historyItem) appState.history.unshift(data.historyItem);
+    if (data.apiUsage) appState.apiUsage = data.apiUsage;
+    pubName.value = "";
+    pubFile.value = "";
+    document.getElementById("pubDesc").value = "";
+    renderAllViews();
+    showToast(`Sukses masuk ke Inventori Roblox! "${data.asset.name}" → rbxassetid://${data.asset.id}`);
+  } finally {
+    submitBtn.textContent = prevBtnText;
+    submitBtn.disabled = false;
   }
-
-  appState.publishedAssets.unshift(data.asset);
-  if (data.historyItem) appState.history.unshift(data.historyItem);
-  if (data.apiUsage) appState.apiUsage = data.apiUsage;
-  pubName.value = "";
-  pubFile.value = "";
-  document.getElementById("pubDesc").value = "";
-  renderAllViews();
-  showToast(`Berhasil di-publish sesuai nama: "${data.asset.name}" (rbxassetid://${data.asset.id})`);
 });
 
 document.getElementById("copyAllPubIdsBtn").addEventListener("click", () => {
@@ -1742,22 +1811,37 @@ document.getElementById("permGrantForm").addEventListener("submit", async e => {
 function renderSettingsForm() {
   const s = appState.settings;
   if (!s) return;
-  document.getElementById("setCreatorType").value = s.creatorType || "Group";
-  document.getElementById("setCreatorId").value = s.creatorId || "12094812";
+  document.getElementById("setCreatorType").value = s.creatorType || "User";
+  document.getElementById("setCreatorId").value = s.creatorId || "48291049";
   document.getElementById("setDefaultRig").value = s.defaultRig || "R15";
   document.getElementById("setDefaultPriority").value = s.defaultPriority || "Action";
   document.getElementById("setWebhookUrl").value = s.webhookUrl || "";
   document.getElementById("setAutoHistory").checked = Boolean(s.autoExportHistory);
 
-  document.getElementById("settingsSummaryCreator").textContent = `${s.creatorType} #${s.creatorId}`;
+  const keyInput = document.getElementById("setOpenCloudKey");
+  const cookieInput = document.getElementById("setRobloxCookie");
+  if (keyInput && s.openCloudKey) keyInput.value = s.openCloudKey;
+  if (cookieInput && s.robloxCookie) cookieInput.value = s.robloxCookie;
+
+  const userSuffix = s.verifiedUsername ? ` (@${s.verifiedUsername})` : "";
+  document.getElementById("settingsSummaryCreator").textContent = `${s.creatorType} #${s.creatorId}${userSuffix}`;
   document.getElementById("settingsSummaryRig").textContent = `${s.defaultRig} · ${s.defaultPriority}`;
   const modeText = document.getElementById("settingsUploadModeText");
   const ocBadge = document.getElementById("settingsOpenCloudBadge");
+
   if (modeText) {
-    modeText.textContent = s.openCloudConnected ? "Live Roblox Open Cloud API" : "Auto (Open Cloud / Studio Registry)";
+    if (s.hasOpenCloudKey && s.hasRobloxCookie) {
+      modeText.textContent = "Aktif Penuh (Open Cloud API + Cookie Animation)";
+    } else if (s.hasRobloxCookie) {
+      modeText.textContent = "Cookie Aktif (Siap Upload Animation & Asset)";
+    } else if (s.hasOpenCloudKey) {
+      modeText.textContent = "Open Cloud API Aktif (Audio, Decal, Model)";
+    } else {
+      modeText.textContent = "Belum Diisi (Wajib Isi untuk Direct Upload)";
+    }
   }
   if (ocBadge) {
-    ocBadge.textContent = s.openCloudConnected ? "● Open Cloud Live" : "● Ready (Set ROBLOX_API_KEY in Railway)";
+    ocBadge.textContent = s.openCloudConnected ? "● Terhubung ke Roblox" : "● Belum Terhubung";
   }
 
   // Sync defaults to Publishing & Spoofer forms
@@ -1772,6 +1856,8 @@ document.getElementById("robloxSettingsForm").addEventListener("submit", async e
   const payload = {
     creatorType: document.getElementById("setCreatorType").value,
     creatorId: document.getElementById("setCreatorId").value,
+    openCloudKey: document.getElementById("setOpenCloudKey")?.value || "",
+    robloxCookie: document.getElementById("setRobloxCookie")?.value || "",
     defaultRig: document.getElementById("setDefaultRig").value,
     defaultPriority: document.getElementById("setDefaultPriority").value,
     webhookUrl: document.getElementById("setWebhookUrl").value,
@@ -1788,9 +1874,56 @@ document.getElementById("robloxSettingsForm").addEventListener("submit", async e
     appState.settings = data.settings;
     if (data.historyItem) appState.history.unshift(data.historyItem);
     renderAllViews();
-    showToast("Pengaturan Roblox berhasil disimpan.");
+    if (data.settings.verifiedUsername) {
+      showToast(`Tersimpan! Terhubung ke akun Roblox @${data.settings.verifiedUsername} (ID: ${data.settings.creatorId}).`);
+    } else if (data.settings.openCloudConnected) {
+      showToast(`Kredensial Roblox berhasil disimpan & siap Direct Upload ke ${data.settings.creatorType} #${data.settings.creatorId}!`);
+    } else {
+      showToast("Pengaturan disimpan, namun API Key / Cookie belum diisi.");
+    }
   }
 });
+
+const verifyRobloxCredsBtn = document.getElementById("verifyRobloxCredsBtn");
+if (verifyRobloxCredsBtn) {
+  verifyRobloxCredsBtn.addEventListener("click", async () => {
+    const prevText = verifyRobloxCredsBtn.textContent;
+    verifyRobloxCredsBtn.textContent = "Mengecek ke Server Roblox...";
+    verifyRobloxCredsBtn.disabled = true;
+
+    try {
+      const payload = {
+        creatorType: document.getElementById("setCreatorType").value,
+        creatorId: document.getElementById("setCreatorId").value,
+        openCloudKey: document.getElementById("setOpenCloudKey")?.value || "",
+        robloxCookie: document.getElementById("setRobloxCookie")?.value || ""
+      };
+
+      const res = await fetch("/api/roblox/verify-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Gagal memverifikasi kredensial Roblox.");
+        return;
+      }
+
+      if (data.detectedUser) {
+        document.getElementById("setCreatorId").value = data.detectedUser.id;
+        document.getElementById("pubCreatorId").value = data.detectedUser.id;
+      }
+      await fetchInitialState();
+      showToast(data.message || "Verifikasi selesai.");
+    } catch {
+      showToast("Gagal menghubungi endpoint verifikasi Roblox.");
+    } finally {
+      verifyRobloxCredsBtn.textContent = prevText;
+      verifyRobloxCredsBtn.disabled = false;
+    }
+  });
+}
 
 // ==========================================
 // 9. API LIMITS & BUY PREMIUM
