@@ -1,0 +1,8 @@
+{
+  "name": "Sakurayama Dashboard",
+  "description": "Workspace all-in-one untuk konversi media, bulk converter, Chat AI, dan Roblox asset tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

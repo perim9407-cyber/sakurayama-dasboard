@@ -1,25 +1,32 @@
-# Sakurayama Dashboard
+# Sakurayama Dashboard (Sakura Pink Edition)
 
-Starter dashboard website inspired by the provided reference image. Built with Node.js and plain HTML/CSS/JavaScript so it can deploy on Railway without a build step.
+All-in-one workspace untuk **Media Converter (YouTube Full Track & Local Audio/Image)**, **Bulk Convert**, **Sakurayama Chat AI (Gemini)**, **Roblox Spoofer (Single & Mass 1,000+ Assets)**, **Roblox Publishing**, dan **Roblox Asset Permission**.
 
-## Run locally
+## Fitur Utama
 
-1. Install Node.js 18 or newer.
-2. Open a terminal in this project folder.
-3. Run `npm start`.
-4. Open `http://localhost:3000`.
+- **Media Converter & Bulk Convert**:
+  - Konversi langsung dari **URL YouTube (Full Lagu)** maupun file lokal ke **WAV, OGG, MP3, PNG, WEBP, JPG**.
+  - Pengaturan Sample Rate (`44.1 kHz`, `48 kHz`, `22.05 kHz`), Stereo/Mono, Pitch/Speed, dan Normalisasi Volume.
+- **Roblox Spoofer & Roblox Publishing (Single & Mass 1.000+ File/ID)**:
+  - Upload 1 atau ribuan file animasi/audio sekaligus; nama aset otomatis disesuaikan persis dengan nama file yang di-upload.
+  - Export ke CSV, JSON, dan generator otomatis `AssetRegistry` ModuleScript Luau untuk Roblox Studio.
+- **Chat AI (Sakurayama AI)**:
+  - Asisten Luau Scripting, Optimasi Aset, dan Roblox Open Cloud berbasis `@google/genai`.
 
-## Deploy using GitHub and Railway
+## Menjalankan Secara Lokal / Server (Railway / Render / VPS)
 
-1. Extract this ZIP file.
-2. Sign in to GitHub and create a new repository, for example `sakurayama-dashboard`.
-3. Upload the contents of this folder to the repository root. Ensure `package.json`, `server.js`, `README.md`, and `public/` are at the root.
-4. Sign in to Railway and choose **New Project** → **Deploy from GitHub repo**.
-5. Select your `sakurayama-dashboard` repository and authorize access if prompted.
-6. Railway detects Node.js and runs `npm start`. If asked for a start command, use `npm start`.
-7. In the Railway service, open **Settings** → **Networking** (or **Public Networking**) and generate a domain.
-8. Open the generated `https://...railway.app` domain to test the site.
-
-## Important
-
-This project is a visual starter, not a finished Roblox API integration. The dashboard navigation works, but converter, AI, publishing, permission checks, account settings, and premium billing need their own backend implementation. Do not put Roblox cookies, API keys, or other secrets in frontend JavaScript or commit them to GitHub. Use Railway Variables for server-side secrets, and only connect through authorized Roblox APIs and workflows.
+1. Pastikan **Node.js 18+** dan **ffmpeg** sudah terpasang di sistem.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Salin `.env.example` menjadi `.env` (opsional untuk fitur Chat AI & Roblox Open Cloud):
+   ```env
+   GEMINI_API_KEY=your_gemini_api_key
+   ROBLOX_API_KEY=your_roblox_open_cloud_key
+   ```
+4. Jalankan server:
+   ```bash
+   npm start
+   ```
+5. Buka `http://localhost:3000`.

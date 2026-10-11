@@ -3,7 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0b0d0e">
+  <meta name="theme-color" content="#0d090c">
+  <meta name="description" content="Workspace all-in-one untuk konversi media, bulk converter, Chat AI, dan Roblox asset tools.">
+  <meta property="og:title" content="Sakurayama Dashboard">
+  <meta property="og:description" content="Workspace all-in-one untuk konversi media, bulk converter, Chat AI, dan Roblox asset tools.">
   <title>Sakurayama Dashboard</title>
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -19,7 +22,7 @@
         <div class="nav-label">WORKSPACE</div>
         <button class="nav-item active" data-page="Home"><span class="nav-icon">⌂</span>Home</button>
         <button class="nav-item" data-page="Converter"><span class="nav-icon">♫</span>Converter</button>
-        <button class="nav-item" data-page="Bulk Convert"><span class="nav-icon">☷</span><span>Bulk Convert</span><span class="creator">Creator+</span></button>
+        <button class="nav-item" data-page="Bulk Convert"><span class="nav-icon">☷</span><span>Bulk Convert</span><span class="creator" id="sidebarPlanBadge">Creator+</span></button>
         <button class="nav-item" data-page="Chat AI"><span class="nav-icon">◌</span>Chat AI</button>
         <button class="nav-item" data-page="History"><span class="nav-icon">◷</span>History</button>
         <div class="nav-divider"></div>
@@ -33,45 +36,926 @@
         <button class="nav-item" data-page="API Limits"><span class="nav-icon">⬡</span>API Limits</button>
         <button class="nav-item" data-page="Buy Premium"><span class="nav-icon">▤</span>Buy Premium</button>
       </nav>
-      <div class="sidebar-footer"><span class="status-dot"></span> Interface preview <span class="version">v1.0</span></div>
+      <div class="sidebar-footer"><span class="status-dot"></span> Workspace aktif <span class="version">v2.0</span></div>
     </aside>
 
     <main class="main">
       <header class="topbar">
         <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
         <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="crumb">Home</strong></div>
-        <div class="top-actions"><span class="online"><i></i> System ready</span><div class="avatar">S</div></div>
+        <div class="top-actions">
+          <span class="online" id="topPlanIndicator"><i></i> <span id="topPlanText">Creator+ Active</span></span>
+          <div class="avatar" title="Sakurayama Workspace">S</div>
+        </div>
       </header>
+
       <section class="content">
         <div class="welcome-row">
-          <div><div class="eyebrow">SAKURAYAMA WORKSPACE</div><h1 id="pageTitle">Welcome back.</h1><p id="pageDescription">Semua tools kamu, dalam satu dashboard.</p></div>
-          <div class="date-chip"><span class="date-dot"></span> Dashboard preview</div>
+          <div>
+            <div class="eyebrow">SAKURAYAMA WORKSPACE</div>
+            <h1 id="pageTitle">Welcome back.</h1>
+            <p id="pageDescription">Semua tools kamu, dalam satu dashboard.</p>
+          </div>
+          <div class="date-chip"><span class="date-dot"></span> <span id="liveClock">Workspace Ready</span></div>
         </div>
-        <div class="notice"><span class="notice-icon">✦</span><div><strong>Selamat datang di Sakurayama</strong><p>Ini adalah starter dashboard. Pilih menu di sidebar untuk melihat halaman setiap tool.</p></div><button id="dismissNotice" aria-label="Tutup pemberitahuan">×</button></div>
-        <div class="section-heading"><div><h2>Workspace overview</h2><p>Ringkasan menu dan akses tools.</p></div><span class="subtle-label">QUICK ACCESS</span></div>
-        <div class="stats-grid">
-          <button class="stat-card" data-page="Converter"><div class="stat-top"><span class="stat-icon">♫</span><span class="card-arrow">↗</span></div><span class="stat-label">MEDIA TOOLS</span><strong>Converter</strong><p>Halaman konversi media</p></button>
-          <button class="stat-card" data-page="Roblox Publishing"><div class="stat-top"><span class="stat-icon">⌁</span><span class="card-arrow">↗</span></div><span class="stat-label">ROBLOX TOOLS</span><strong>Publishing</strong><p>Persiapan publikasi aset</p></button>
-          <button class="stat-card" data-page="Roblox Asset Permission"><div class="stat-top"><span class="stat-icon">⬡</span><span class="card-arrow">↗</span></div><span class="stat-label">ASSET MANAGEMENT</span><strong>Asset Permission</strong><p>Informasi akses aset</p></button>
-          <button class="stat-card" data-page="API Limits"><div class="stat-top"><span class="stat-icon">⌁</span><span class="card-arrow">↗</span></div><span class="stat-label">INFORMATION</span><strong>API Limits</strong><p>Ruang untuk status API</p></button>
-        </div>
-        <div class="lower-grid">
-          <div class="panel"><div class="panel-heading"><div><h2>Quick actions</h2><p>Pilih halaman untuk mulai.</p></div><span class="panel-symbol">⌘</span></div><div class="quick-list">
-            <button data-page="Bulk Convert"><span class="quick-icon">☷</span><span><strong>Bulk Convert</strong><small>Kelola banyak item dalam satu alur</small></span><b>→</b></button>
-            <button data-page="Chat AI"><span class="quick-icon">◌</span><span><strong>Chat AI</strong><small>Ruang untuk fitur asisten</small></span><b>→</b></button>
-            <button data-page="Roblox Settings"><span class="quick-icon">⚙</span><span><strong>Roblox Settings</strong><small>Pengaturan integrasi</small></span><b>→</b></button>
-          </div></div>
-          <div class="panel status-panel"><div class="panel-heading"><div><h2>System status</h2><p>Status interface saat ini.</p></div><span class="pulse"></span></div>
-            <div class="status-line"><span>Dashboard interface</span><strong class="good">● Ready</strong></div>
-            <div class="status-line"><span>Backend server</span><strong class="good">● Online</strong></div>
-            <div class="status-line"><span>Roblox API integration</span><strong class="pending">Not configured</strong></div>
-            <div class="status-foot">Integrasi API belum diaktifkan. Tambahkan backend dan kredensial resmi saat fitur siap.</div>
+
+        <!-- VIEW: HOME -->
+        <div class="page-view active" data-view="Home">
+          <div class="notice" id="welcomeNotice">
+            <span class="notice-icon">✦</span>
+            <div>
+              <strong>Selamat datang di Sakurayama Workspace</strong>
+              <p>Semua fitur Converter, Bulk Convert, Chat AI, hingga Roblox Tools kini sudah aktif dan siap digunakan langsung.</p>
+            </div>
+            <button id="dismissNotice" aria-label="Tutup pemberitahuan">×</button>
+          </div>
+
+          <div class="section-heading">
+            <div><h2>Workspace overview</h2><p>Ringkasan menu dan akses cepat tools.</p></div>
+            <span class="subtle-label">QUICK ACCESS</span>
+          </div>
+
+          <div class="stats-grid">
+            <button class="stat-card" data-page="Converter">
+              <div class="stat-top"><span class="stat-icon">♫</span><span class="card-arrow">↗</span></div>
+              <span class="stat-label">MEDIA TOOLS</span>
+              <strong>Converter</strong>
+              <p id="homeConverterStat">Konversi Audio &amp; Gambar instan</p>
+            </button>
+            <button class="stat-card" data-page="Roblox Publishing">
+              <div class="stat-top"><span class="stat-icon">⌁</span><span class="card-arrow">↗</span></div>
+              <span class="stat-label">ROBLOX TOOLS</span>
+              <strong>Publishing</strong>
+              <p id="homePublishStat">Publikasi aset ke Roblox Cloud</p>
+            </button>
+            <button class="stat-card" data-page="Roblox Asset Permission">
+              <div class="stat-top"><span class="stat-icon">⬡</span><span class="card-arrow">↗</span></div>
+              <span class="stat-label">ASSET MANAGEMENT</span>
+              <strong>Asset Permission</strong>
+              <p>Kelola akses Place &amp; Universe ID</p>
+            </button>
+            <button class="stat-card" data-page="API Limits">
+              <div class="stat-top"><span class="stat-icon">⌁</span><span class="card-arrow">↗</span></div>
+              <span class="stat-label">INFORMATION</span>
+              <strong>API Limits</strong>
+              <p id="homeApiStat">Pantau kuota penggunaan harian</p>
+            </button>
+          </div>
+
+          <div class="lower-grid">
+            <div class="panel">
+              <div class="panel-heading">
+                <div><h2>Quick actions</h2><p>Pilih halaman untuk mulai bekerja.</p></div>
+                <span class="panel-symbol">⌘</span>
+              </div>
+              <div class="quick-list">
+                <button data-page="Bulk Convert">
+                  <span class="quick-icon">☷</span>
+                  <span><strong>Bulk Convert</strong><small>Konversi banyak file audio/gambar sekaligus dalam satu antrean</small></span>
+                  <b>→</b>
+                </button>
+                <button data-page="Chat AI">
+                  <span class="quick-icon">◌</span>
+                  <span><strong>Chat AI</strong><small>Asisten AI khusus Luau script, animasi, dan optimasi aset Roblox</small></span>
+                  <b>→</b>
+                </button>
+                <button data-page="Roblox Spoofer">
+                  <span class="quick-icon">◈</span>
+                  <span><strong>Roblox Spoofer</strong><small>Re-hash animasi R6/R15, atur prioritas, dan generate loader Luau</small></span>
+                  <b>→</b>
+                </button>
+                <button data-page="Roblox Settings">
+                  <span class="quick-icon">⚙</span>
+                  <span><strong>Roblox Settings</strong><small>Konfigurasi Creator ID, Group ID, dan default rig animasi</small></span>
+                  <b>→</b>
+                </button>
+              </div>
+            </div>
+
+            <div class="panel status-panel">
+              <div class="panel-heading">
+                <div><h2>System status</h2><p>Status layanan dan integrasi saat ini.</p></div>
+                <span class="pulse"></span>
+              </div>
+              <div class="status-line"><span>Dashboard interface</span><strong class="good">● Ready</strong></div>
+              <div class="status-line"><span>Web Audio &amp; Image Engine</span><strong class="good">● Active</strong></div>
+              <div class="status-line"><span>Sakurayama Chat AI (Gemini)</span><strong class="good">● Online</strong></div>
+              <div class="status-line"><span>Roblox Open Cloud Target</span><strong class="good" id="homeCreatorTarget">● Group #12094812</strong></div>
+              <div class="status-foot" id="homeRecentActivity">Aktivitas terakhir siap dipantau di halaman History.</div>
+            </div>
           </div>
         </div>
+
+        <!-- VIEW: CONVERTER -->
+        <div class="page-view" data-view="Converter">
+          <div class="workspace-grid two-col">
+            <div class="panel">
+              <div class="panel-heading">
+                <div><h2>Media Converter</h2><p>Konversi dari URL YouTube atau file lokal untuk kebutuhan Roblox Studio &amp; project kreatif.</p></div>
+                <span class="panel-symbol">♫</span>
+              </div>
+
+              <!-- YouTube Direct URL Box -->
+              <div class="yt-box">
+                <div class="yt-box-label">
+                  <span>▶ KONVERSI LANGSUNG DARI URL YOUTUBE</span>
+                  <button type="button" class="btn-ghost compact-btn" id="sampleYtUrlBtn">Isi Contoh URL</button>
+                </div>
+                <div class="btn-row" style="flex-wrap:nowrap;">
+                  <input type="url" id="ytUrlInput" class="input-control" placeholder="Paste link YouTube (https://www.youtube.com/watch?v=... atau youtu.be/...)">
+                  <button type="button" class="btn-primary" id="fetchYtBtn">Ambil &amp; Muat</button>
+                </div>
+                <div id="ytPreviewCard" class="yt-preview hidden">
+                  <img id="ytThumbImg" alt="YouTube Thumbnail" referrerPolicy="no-referrer">
+                  <div class="yt-preview-info">
+                    <strong id="ytVideoTitle">Judul Video YouTube</strong>
+                    <small id="ytVideoAuthor">Channel · Durasi</small>
+                    <span class="good" id="ytReadyStatus">● Siap dikonversi ke WAV / OGG / MP3</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dropzone" id="singleDropzone" style="margin-top:14px;">
+                <input type="file" id="singleFileInput" accept="audio/*,image/*" hidden>
+                <div class="dropzone-icon">↑</div>
+                <strong id="singleFileName">Atau klik / tarik file Audio &amp; Gambar lokal ke sini</strong>
+                <p id="singleFileMeta">Mendukung WAV, MP3, OGG, FLAC, PNG, JPG, WEBP (Maks 25MB)</p>
+                <div class="btn-row" style="justify-content:center;margin-top:12px;">
+                  <button type="button" class="btn-secondary" id="selectSingleFileBtn">Pilih File Lokal</button>
+                  <button type="button" class="btn-ghost" id="loadSampleAudioBtn">Gunakan Sample Audio</button>
+                </div>
+              </div>
+
+              <div class="form-grid" style="margin-top:18px;">
+                <div class="form-group">
+                  <label for="convCategory">Kategori Media</label>
+                  <select id="convCategory" class="input-control">
+                    <option value="audio">Audio (WAV / OGG / MP3)</option>
+                    <option value="image">Image / Decal (PNG / WEBP / JPG)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="convFormat">Format Output</label>
+                  <select id="convFormat" class="input-control">
+                    <option value="wav">WAV (Lossless PCM 16-bit)</option>
+                    <option value="ogg">OGG (Roblox Audio Optimized)</option>
+                    <option value="mp3">MP3 (Standard Audio)</option>
+                  </select>
+                </div>
+                <div class="form-group" id="convSampleRateGroup">
+                  <label for="convSampleRate">Sample Rate (Hz)</label>
+                  <select id="convSampleRate" class="input-control">
+                    <option value="44100">44,100 Hz (Standar Studio)</option>
+                    <option value="48000">48,000 Hz (High Definition)</option>
+                    <option value="22050">22,050 Hz (Hemat Ukuran Roblox)</option>
+                  </select>
+                </div>
+                <div class="form-group" id="convChannelsGroup">
+                  <label for="convChannels">Channel &amp; Efek</label>
+                  <select id="convChannels" class="input-control">
+                    <option value="stereo">Stereo (2 Channel)</option>
+                    <option value="mono">Mono (1 Channel - 3D Sound Roblox)</option>
+                  </select>
+                </div>
+                <div class="form-group" id="convSpeedGroup">
+                  <label for="convPitch">Kecepatan / Pitch (<span id="convPitchVal">1.00x</span>)</label>
+                  <input type="range" id="convPitch" min="0.5" max="1.5" step="0.05" value="1.0" class="range-control">
+                </div>
+                <div class="form-group" id="convNormalizeGroup">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="convNormalize" checked>
+                    <span>Normalisasi Volume &amp; Anti-Clipping (Roblox Safe)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="btn-row" style="margin-top:18px;">
+                <button type="button" class="btn-primary" id="startSingleConvertBtn">Konversi Sekarang</button>
+                <button type="button" class="btn-ghost" id="resetSingleConvertBtn">Reset</button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-heading">
+                <div><h2>Hasil &amp; Preview</h2><p>Pratinjau output dan unduh file hasil konversi.</p></div>
+                <span class="subtle-label" id="convStatusBadge">READY</span>
+              </div>
+
+              <div id="convResultEmpty" class="empty-box">
+                <p>Belum ada media yang dikonversi. Paste <strong>URL YouTube</strong> atau pilih file lokal, lalu tekan <strong>Konversi Sekarang</strong>.</p>
+              </div>
+
+              <div id="convResultBox" class="result-card hidden">
+                <div class="result-meta">
+                  <div>
+                    <span class="stat-label">OUTPUT FILE</span>
+                    <strong id="convOutName">sakura_bgm_converted.wav</strong>
+                    <p id="convOutSpecs">WAV · 44.1 kHz · Stereo · 1.24 MB</p>
+                  </div>
+                  <span class="good">● Selesai</span>
+                </div>
+
+                <div id="convAudioPreviewWrap" class="preview-media">
+                  <audio id="convAudioPlayer" controls style="width:100%;"></audio>
+                </div>
+
+                <div id="convImagePreviewWrap" class="preview-media hidden">
+                  <img id="convImagePreview" alt="Hasil Konversi" referrerPolicy="no-referrer">
+                </div>
+
+                <div class="btn-row" style="margin-top:16px;">
+                  <a id="convDownloadBtn" class="btn-primary" download="converted_file.wav">Download Hasil</a>
+                  <button type="button" class="btn-secondary" id="sendToPublishBtn">Kirim ke Roblox Publishing →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: BULK CONVERT -->
+        <div class="page-view" data-view="Bulk Convert">
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Bulk Media Converter <span class="creator">Creator+</span></h2>
+                <p>Proses banyak URL YouTube, file audio, atau gambar sekaligus dengan preset seragam.</p>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn-ghost" id="addDemoBatchBtn">+ Tambah 3 Sample File</button>
+                <button type="button" class="btn-secondary" id="selectBulkFilesBtn">+ Pilih Banyak File</button>
+                <input type="file" id="bulkFilesInput" multiple accept="audio/*,image/*" hidden>
+              </div>
+            </div>
+
+            <div class="yt-box" style="margin-bottom:16px;">
+              <div class="yt-box-label">
+                <span>▶ TAMBAH URL YOUTUBE KE ANTREAN BULK</span>
+              </div>
+              <div class="btn-row" style="flex-wrap:nowrap;">
+                <input type="url" id="bulkYtUrlInput" class="input-control" placeholder="Paste link YouTube untuk dimasukkan ke antrean Bulk Convert...">
+                <button type="button" class="btn-secondary" id="addBulkYtBtn">+ Masuk Antrean</button>
+              </div>
+            </div>
+
+            <div class="form-grid three-col" style="margin-bottom:18px;">
+              <div class="form-group">
+                <label for="bulkTargetFormat">Target Format Semua File</label>
+                <select id="bulkTargetFormat" class="input-control">
+                  <option value="wav">WAV (Audio Lossless)</option>
+                  <option value="ogg">OGG (Roblox Optimized Audio)</option>
+                  <option value="png">PNG (Roblox Decal / UI)</option>
+                  <option value="webp">WEBP (Kompresi Cepat)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="bulkSampleRate">Target Sample Rate Audio</label>
+                <select id="bulkSampleRate" class="input-control">
+                  <option value="44100">44,100 Hz</option>
+                  <option value="22050">22,050 Hz (Ukuran Kecil)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="bulkPrefix">Prefix Nama File Output</label>
+                <input type="text" id="bulkPrefix" class="input-control" value="sakura_" placeholder="Misal: sakura_">
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nama File</th>
+                    <th>Ukuran Asli</th>
+                    <th>Target Output</th>
+                    <th>Status</th>
+                    <th style="text-align:right;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="bulkTableBody">
+                  <tr>
+                    <td colspan="5" class="empty-cell">Antrean masih kosong. Tambahkan file atau gunakan tombol "+ Tambah 3 Sample File".</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="btn-row" style="margin-top:18px;justify-content:space-between;">
+              <span class="muted-text" id="bulkSummaryText">0 file dalam antrean</span>
+              <div class="btn-row">
+                <button type="button" class="btn-ghost" id="clearBulkBtn">Bersihkan Antrean</button>
+                <button type="button" class="btn-primary" id="runBulkConvertBtn">Proses Semua Antrean</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: CHAT AI -->
+        <div class="page-view" data-view="Chat AI">
+          <div class="workspace-grid chat-layout">
+            <div class="panel chat-main-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Sakurayama AI Assistant</h2>
+                  <p>Asisten cerdas bertenaga Gemini untuk Luau Scripting, troubleshooting aset, dan desain game Roblox.</p>
+                </div>
+                <select id="chatModeSelect" class="input-control compact-select">
+                  <option value="general">Mode: Umum &amp; Studio</option>
+                  <option value="luau">Mode: Pakar Luau Script</option>
+                  <option value="asset">Mode: Optimasi Aset &amp; Cloud</option>
+                </select>
+              </div>
+
+              <div class="chat-messages" id="chatMessages">
+                <div class="chat-bubble ai">
+                  <div class="bubble-header"><strong>Sakurayama AI</strong> <span>System</span></div>
+                  <div class="bubble-body">Halo! Aku asisten AI Sakurayama. Kamu bisa tanya seputar pembuatan script Luau, cara mengatasi animasi R6/R15 yang tidak jalan, optimasi audio OGG, atau penggunaan Roblox Open Cloud API.</div>
+                </div>
+              </div>
+
+              <form id="chatForm" class="chat-input-bar">
+                <input type="text" id="chatInput" class="input-control" placeholder="Tulis pertanyaan atau minta buatkan script Luau..." autocomplete="off">
+                <button type="submit" class="btn-primary" id="chatSendBtn">Kirim</button>
+              </form>
+            </div>
+
+            <div class="panel">
+              <div class="panel-heading">
+                <div><h2>Prompt Cepat</h2><p>Klik untuk langsung bertanya.</p></div>
+                <span class="panel-symbol">✦</span>
+              </div>
+              <div class="quick-list">
+                <button type="button" class="chat-preset-btn" data-prompt="Buatkan script Luau untuk memutar animasi katana combo 3 hit pada karakter R15 saat pemain klik kiri (Activated) lengkap dengan cooldown.">
+                  <span class="quick-icon">◈</span>
+                  <span><strong>Script Combo Animasi R15</strong><small>3-hit sword combo dengan debounce</small></span>
+                  <b>→</b>
+                </button>
+                <button type="button" class="chat-preset-btn" data-prompt="Bagaimana cara memperbaiki error 'Failed to load animation - sanitized ID' di Roblox Studio untuk game milik Group?">
+                  <span class="quick-icon">⬡</span>
+                  <span><strong>Fix Sanitized ID Error</strong><small>Solusi izin animasi antara User &amp; Group</small></span>
+                  <b>→</b>
+                </button>
+                <button type="button" class="chat-preset-btn" data-prompt="Buatkan sistem Audio Manager di Luau yang memutar musik background secara smooth (crossfade) menggunakan TweenService saat pindah area.">
+                  <span class="quick-icon">♫</span>
+                  <span><strong>Audio Crossfade Manager</strong><small>Transisi BGM antar zona dengan TweenService</small></span>
+                  <b>→</b>
+                </button>
+                <button type="button" class="chat-preset-btn" id="clearChatBtn">
+                  <span class="quick-icon">↺</span>
+                  <span><strong>Bersihkan Percakapan</strong><small>Mulai sesi chat baru dari awal</small></span>
+                  <b>→</b>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: HISTORY -->
+        <div class="page-view" data-view="History">
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Activity History</h2>
+                <p>Catatan lengkap semua konversi media, spoofing, publikasi aset, dan penggunaan AI.</p>
+              </div>
+              <div class="btn-row">
+                <input type="search" id="historySearchInput" class="input-control compact-input" placeholder="Cari riwayat...">
+                <select id="historyFilterSelect" class="input-control compact-select">
+                  <option value="ALL">Semua Tool</option>
+                  <option value="Converter">Converter</option>
+                  <option value="Bulk Convert">Bulk Convert</option>
+                  <option value="Chat AI">Chat AI</option>
+                  <option value="Roblox Spoofer">Roblox Spoofer</option>
+                  <option value="Roblox Publishing">Roblox Publishing</option>
+                  <option value="Roblox Asset Permission">Roblox Asset Permission</option>
+                </select>
+                <button type="button" class="btn-secondary" id="exportHistoryBtn">Export JSON</button>
+                <button type="button" class="btn-ghost" id="clearHistoryBtn">Hapus Riwayat</button>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Waktu</th>
+                    <th>Tool</th>
+                    <th>Aksi</th>
+                    <th>Detail</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="historyTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: ROBLOX SPOOFER -->
+        <div class="page-view" data-view="Roblox Spoofer">
+          <div class="workspace-grid two-col">
+            <div class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Roblox Animation &amp; Asset Spoofer</h2>
+                  <p>Spoof 1 aset atau langsung ribuan (1.000+ file/ID) dengan nama otomatis sesuai file yang di-upload.</p>
+                </div>
+                <div class="btn-row">
+                  <button type="button" class="btn-primary compact-btn" id="spoofModeSingleBtn">Single Spoof</button>
+                  <button type="button" class="btn-secondary compact-btn" id="spoofModeMassBtn">Mass Spoof (1.000+)</button>
+                </div>
+              </div>
+
+              <form id="spooferForm" class="form-grid">
+                <!-- Single Input Section -->
+                <div id="spoofSingleInputGroup" class="form-group full-width">
+                  <div class="yt-box-label" style="margin-bottom:4px;">
+                    <label for="spoofAssetId">Target Roblox Asset ID / File Aset</label>
+                    <button type="button" class="btn-secondary compact-btn" id="uploadSingleSpoofFileBtn">Upload File (Auto-Nama)</button>
+                    <input type="file" id="spoofSingleFileInput" accept=".rbxm,.rbxmx,.ogg,.wav,.mp3,.png,.mesh" hidden>
+                  </div>
+                  <input type="text" id="spoofAssetId" class="input-control" value="rbxassetid://14892039104" placeholder="Contoh: 14892039104 atau upload file di atas">
+                </div>
+
+                <!-- Mass 1,000+ Input Section -->
+                <div id="spoofMassInputGroup" class="form-group full-width hidden">
+                  <div class="yt-box-label" style="margin-bottom:4px;">
+                    <label for="spoofBatchList">UPLOAD BANYAK FILE / DAFTAR ID (OTOMATIS SESUAI NAMA FILE)</label>
+                    <div class="btn-row">
+                      <button type="button" class="btn-primary compact-btn" id="uploadMassSpoofFilesBtn">+ Upload Banyak File (Auto-Nama)</button>
+                      <input type="file" id="spoofMassFilesInput" multiple hidden>
+                      <button type="button" class="btn-secondary compact-btn" id="gen1000SpoofBtn">+ Sample 1.000 Item</button>
+                      <button type="button" class="btn-ghost compact-btn" id="uploadSpoofTxtBtn">Import .TXT/.CSV</button>
+                      <input type="file" id="spoofTxtFileInput" accept=".txt,.csv,.json,.lua" hidden>
+                    </div>
+                  </div>
+                  <textarea id="spoofBatchList" rows="6" class="input-control mono-text" placeholder="Upload banyak file sekaligus (nama aset otomatis mengikuti nama file)&#10;Atau tulis format: NamaFile : rbxassetid://14892039104&#10;Katana_Slash_01 : 14892039104&#10;Shrine_Bell_SFX : 98410293841"></textarea>
+                  <small class="muted-text" id="spoofMassCounter">0 item terdeteksi dalam daftar</small>
+                </div>
+
+                <div class="form-group">
+                  <label for="spoofCustomName" id="spoofNameLabel">Nama Output Aset (Otomatis dari File)</label>
+                  <input type="text" id="spoofCustomName" class="input-control" value="Sakura_Dash_Strike" placeholder="Otomatis terisi saat upload file">
+                </div>
+                <div class="form-group">
+                  <label for="spoofAssetType">Tipe Aset</label>
+                  <select id="spoofAssetType" class="input-control">
+                    <option value="Animation">KeyframeSequence (Animation)</option>
+                    <option value="Audio">Audio Stream</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="spoofRigType">Target Rig</label>
+                  <select id="spoofRigType" class="input-control">
+                    <option value="R15">R15 (15 Joints - Modern)</option>
+                    <option value="R6">R6 (6 Joints - Classic)</option>
+                    <option value="Custom">Custom Bone Rig / Skinned Mesh</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="spoofPriority">Animation Priority</label>
+                  <select id="spoofPriority" class="input-control">
+                    <option value="Action">Action</option>
+                    <option value="Action2">Action2</option>
+                    <option value="Action3">Action3</option>
+                    <option value="Action4">Action4 (Highest)</option>
+                    <option value="Movement">Movement</option>
+                    <option value="Idle">Idle</option>
+                    <option value="Core">Core</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="spoofSpeed">Time Scale / Speed (<span id="spoofSpeedVal">1.00x</span>)</label>
+                  <input type="range" id="spoofSpeed" min="0.5" max="2.0" step="0.05" value="1.0" class="range-control">
+                </div>
+                <div class="form-group">
+                  <label class="checkbox-label" style="margin-top:22px;">
+                    <input type="checkbox" id="spoofLoop">
+                    <span>Aktifkan Looped Animation</span>
+                  </label>
+                </div>
+                <div class="form-group full-width">
+                  <div class="btn-row">
+                    <button type="submit" class="btn-primary" id="runSpoofBtn">Generate Spoofed Asset &amp; Loader</button>
+                    <button type="button" class="btn-secondary" id="sendSpoofToPublishBtn">Kirim Hasil ke Roblox Publishing →</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            <div class="panel">
+              <div class="panel-heading">
+                <div><h2>Output Spoofer &amp; Luau Loader</h2><p>Gunakan ID baru, salin script loader, atau export hasil mass spoof.</p></div>
+                <span class="subtle-label" id="spoofBadge">READY</span>
+              </div>
+
+              <div id="spoofResultBox">
+                <div class="kv-grid">
+                  <div class="kv-item">
+                    <span id="spoofKvLabel1">Nama Aset / Total</span>
+                    <strong id="spoofOutOrig" class="mono-text">Sakura_Dash_Strike</strong>
+                  </div>
+                  <div class="kv-item">
+                    <span id="spoofKvLabel2">Spoofed Asset URI</span>
+                    <strong id="spoofOutNew" class="mono-text gold-text">rbxassetid://98410293841</strong>
+                  </div>
+                  <div class="kv-item">
+                    <span>Rig &amp; Priority</span>
+                    <strong id="spoofOutRig">R15 · Action</strong>
+                  </div>
+                  <div class="kv-item">
+                    <span>Hash / Batch Status</span>
+                    <strong id="spoofOutHash" class="mono-text">MTQ4OTIwMzkxMDQ6UjE1OkFj</strong>
+                  </div>
+                </div>
+
+                <!-- Mass Spoof Table & Export (shown when Mass Spoof runs) -->
+                <div id="massSpoofOutputSection" class="hidden" style="margin-bottom:14px;">
+                  <div class="code-header">
+                    <span id="massSpoofTableTitle">Hasil Mass Spoof (0 Aset)</span>
+                    <div class="btn-row">
+                      <button type="button" class="btn-ghost compact-btn" id="copyAllSpoofedIdsBtn">Copy Semua ID Baru</button>
+                      <button type="button" class="btn-secondary compact-btn" id="exportSpoofCsvBtn">Download CSV</button>
+                      <button type="button" class="btn-secondary compact-btn" id="exportSpoofJsonBtn">Download JSON</button>
+                    </div>
+                  </div>
+                  <div class="table-wrap" style="max-height:190px;overflow-y:auto;">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Nama Aset (Sesuai File)</th>
+                          <th>Original ID</th>
+                          <th>Spoofed URI Baru</th>
+                        </tr>
+                      </thead>
+                      <tbody id="massSpoofTableBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="code-header">
+                  <span>Luau Script / ModuleScript Loader</span>
+                  <div class="btn-row">
+                    <button type="button" class="btn-ghost compact-btn" id="copySpoofIdBtn">Copy URI</button>
+                    <button type="button" class="btn-secondary compact-btn" id="copySpoofCodeBtn">Copy Luau Script</button>
+                  </div>
+                </div>
+                <pre class="code-block" id="spoofCodeBlock">-- Klik "Generate Spoofed Asset &amp; Loader" untuk membuat script Luau siap pakai.</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: ROBLOX PUBLISHING -->
+        <div class="page-view" data-view="Roblox Publishing">
+          <div class="workspace-grid two-col">
+            <div class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Publish Asset ke Roblox Cloud</h2>
+                  <p>Upload 1 file atau ribuan (1.000+ file) sekaligus — nama aset otomatis mengikuti nama file yang di-upload.</p>
+                </div>
+                <div class="btn-row">
+                  <button type="button" class="btn-primary compact-btn" id="pubModeSingleBtn">Single Publish</button>
+                  <button type="button" class="btn-secondary compact-btn" id="pubModeMassBtn">Mass Publish (1.000+)</button>
+                </div>
+              </div>
+
+              <form id="publishForm" class="form-grid">
+                <!-- Single Publish Upload & Name -->
+                <div id="pubSingleGroup" class="form-group full-width">
+                  <label for="pubFile">Upload File Aset (Nama Aset Otomatis Menyesuaikan Nama File)</label>
+                  <input type="file" id="pubFile" class="input-control">
+                </div>
+                <div id="pubSingleNameGroup" class="form-group full-width">
+                  <label for="pubName">Nama Aset (Otomatis dari Nama File)</label>
+                  <input type="text" id="pubName" class="input-control" placeholder="Pilih file di atas atau ketik nama aset...">
+                </div>
+
+                <!-- Mass 1,000+ Publish Upload & List -->
+                <div id="pubMassGroup" class="form-group full-width hidden">
+                  <div class="yt-box-label" style="margin-bottom:4px;">
+                    <label for="pubBatchList">UPLOAD BANYAK FILE / DAFTAR NAMA ASET (BISA 1.000+ SEKALIGUS)</label>
+                    <div class="btn-row">
+                      <button type="button" class="btn-primary compact-btn" id="uploadMassPubFilesBtn">+ Pilih Banyak File (Auto-Nama)</button>
+                      <input type="file" id="pubMassFilesInput" multiple hidden>
+                      <button type="button" class="btn-secondary compact-btn" id="gen1000PubSampleBtn">+ Sample 1.000 Nama File</button>
+                    </div>
+                  </div>
+                  <textarea id="pubBatchList" rows="6" class="input-control mono-text" placeholder="Pilih banyak file sekaligus (nama tiap aset otomatis sama dengan nama filenya)&#10;Atau tulis daftar nama file/aset per baris:&#10;Katana_Slash_Combo_01.rbxm&#10;Shrine_Wind_Loop.ogg&#10;Sakura_VFX_Decal.png"></textarea>
+                  <small class="muted-text" id="pubMassCounter">0 file/aset siap di-publish</small>
+                </div>
+
+                <div class="form-group">
+                  <label for="pubType">Tipe Aset Default</label>
+                  <select id="pubType" class="input-control">
+                    <option value="Animation">Animation (RBXM / Keyframe)</option>
+                    <option value="Audio">Audio (OGG / WAV)</option>
+                    <option value="Decal">Image / Decal (PNG)</option>
+                    <option value="Model">3D Model / MeshPart</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="pubCreatorType">Target Owner</label>
+                  <select id="pubCreatorType" class="input-control">
+                    <option value="Group">Group</option>
+                    <option value="User">Personal User</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="pubCreatorId">Creator / Group ID</label>
+                  <input type="text" id="pubCreatorId" class="input-control" value="12094812" required>
+                </div>
+                <div class="form-group">
+                  <label for="pubDesc">Deskripsi Aset (Opsional)</label>
+                  <input type="text" id="pubDesc" class="input-control" placeholder="Otomatis mengikuti nama file jika dikosongkan">
+                </div>
+                <div class="form-group full-width">
+                  <button type="submit" class="btn-primary" id="publishSubmitBtn">Publish ke Roblox Cloud</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="panel">
+              <div class="panel-heading">
+                <div><h2>Daftar Aset Terpublikasi</h2><p>Semua aset yang baru di-publish beserta ID dan tombol export.</p></div>
+                <div class="btn-row">
+                  <span class="subtle-label" id="publishedCountBadge">2 ASSETS</span>
+                  <button type="button" class="btn-ghost compact-btn" id="copyAllPubIdsBtn">Copy Semua ID</button>
+                  <button type="button" class="btn-secondary compact-btn" id="exportPubCsvBtn">Export CSV</button>
+                </div>
+              </div>
+
+              <div class="table-wrap" style="max-height:430px;overflow-y:auto;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Asset ID</th>
+                      <th>Nama Aset (Sesuai File) &amp; Tipe</th>
+                      <th>Owner</th>
+                      <th style="text-align:right;">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="publishedTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: ROBLOX ASSET PERMISSION -->
+        <div class="page-view" data-view="Roblox Asset Permission">
+          <div class="workspace-grid two-col">
+            <div class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Roblox Asset Permission Manager</h2>
+                  <p>Periksa kepemilikan aset dan berikan izin akses ke Place ID / Universe ID game kamu.</p>
+                </div>
+                <span class="panel-symbol">⬡</span>
+              </div>
+
+              <form id="permInspectForm" class="btn-row" style="margin-bottom:18px;">
+                <input type="text" id="permAssetIdInput" class="input-control" value="98410293841" placeholder="Masukkan Asset ID (contoh: 98410293841)" style="flex:1;">
+                <button type="submit" class="btn-secondary">Cek Permission</button>
+              </form>
+
+              <div class="kv-grid" id="permAssetDetails">
+                <div class="kv-item">
+                  <span>Asset ID</span>
+                  <strong id="permDetailId" class="mono-text">98410293841</strong>
+                </div>
+                <div class="kv-item">
+                  <span>Nama Aset</span>
+                  <strong id="permDetailName">Sakura Slash Combo V2</strong>
+                </div>
+                <div class="kv-item">
+                  <span>Owner</span>
+                  <strong id="permDetailOwner">Sakurayama Studio (Group #12094812)</strong>
+                </div>
+                <div class="kv-item">
+                  <span>Status Visibilitas</span>
+                  <strong id="permDetailVis" class="gold-text">Private (Whitelisted Places Only)</strong>
+                </div>
+              </div>
+
+              <div class="nav-divider"></div>
+
+              <form id="permGrantForm" class="form-grid">
+                <div class="form-group">
+                  <label for="grantPlaceId">Tambah Place ID / Universe ID</label>
+                  <input type="text" id="grantPlaceId" class="input-control" placeholder="Contoh: 581920491" required>
+                </div>
+                <div class="form-group">
+                  <label for="grantPlaceName">Nama Experience / Place</label>
+                  <input type="text" id="grantPlaceName" class="input-control" placeholder="Contoh: Sakurayama Boss Arena">
+                </div>
+                <div class="form-group full-width">
+                  <button type="submit" class="btn-primary">Berikan Izin Akses (Grant Permission)</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="panel">
+              <div class="panel-heading">
+                <div><h2>Experience yang Diizinkan</h2><p>Daftar Place ID yang memiliki akses ke aset ini.</p></div>
+                <span class="good" id="permPlacesCount">● 2 Places</span>
+              </div>
+
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Place ID</th>
+                      <th>Nama Experience</th>
+                      <th>Level Akses</th>
+                      <th style="text-align:right;">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="permPlacesTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: ROBLOX SETTINGS -->
+        <div class="page-view" data-view="Roblox Settings">
+          <div class="workspace-grid two-col">
+            <div class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Konfigurasi Integrasi Roblox</h2>
+                  <p>Atur preferensi default untuk Creator ID, Group ID, dan preset konversi aset.</p>
+                </div>
+                <span class="panel-symbol">⚙</span>
+              </div>
+
+              <form id="robloxSettingsForm" class="form-grid">
+                <div class="form-group">
+                  <label for="setCreatorType">Tipe Creator Default</label>
+                  <select id="setCreatorType" class="input-control">
+                    <option value="Group">Group Studio</option>
+                    <option value="User">Personal User</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="setCreatorId">Default Creator / Group ID</label>
+                  <input type="text" id="setCreatorId" class="input-control" value="12094812" required>
+                </div>
+                <div class="form-group">
+                  <label for="setDefaultRig">Default Animation Rig</label>
+                  <select id="setDefaultRig" class="input-control">
+                    <option value="R15">R15</option>
+                    <option value="R6">R6</option>
+                    <option value="Custom">Custom Skinned Rig</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="setDefaultPriority">Default Animation Priority</label>
+                  <select id="setDefaultPriority" class="input-control">
+                    <option value="Action">Action</option>
+                    <option value="Action2">Action2</option>
+                    <option value="Movement">Movement</option>
+                    <option value="Idle">Idle</option>
+                  </select>
+                </div>
+                <div class="form-group full-width">
+                  <label for="setWebhookUrl">Discord / Studio Webhook URL (Opsional)</label>
+                  <input type="url" id="setWebhookUrl" class="input-control" placeholder="https://discord.com/api/webhooks/...">
+                </div>
+                <div class="form-group full-width">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="setAutoHistory" checked>
+                    <span>Catat otomatis setiap aktivitas konversi dan publikasi ke History</span>
+                  </label>
+                </div>
+                <div class="form-group full-width">
+                  <button type="submit" class="btn-primary">Simpan Pengaturan</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="panel">
+              <div class="panel-heading">
+                <div><h2>Status Lingkungan &amp; Koneksi</h2><p>Informasi sinkronisasi dengan konfigurasi server.</p></div>
+                <span class="good">● Terhubung</span>
+              </div>
+              <div class="status-line"><span>Mode Otentikasi Open Cloud</span><strong class="good">Server-Side Proxy</strong></div>
+              <div class="status-line"><span>Target Creator Aktif</span><strong id="settingsSummaryCreator">Group #12094812</strong></div>
+              <div class="status-line"><span>Preset Animasi Default</span><strong id="settingsSummaryRig">R15 · Action</strong></div>
+              <div class="status-line"><span>Auto-Log History</span><strong id="settingsSummaryLog" class="good">Aktif</strong></div>
+              <div class="status-foot">Semua perubahan pengaturan akan langsung diterapkan sebagai nilai default pada halaman Spoofer, Publishing, dan Asset Permission.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: API LIMITS -->
+        <div class="page-view" data-view="API Limits">
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>API Limits &amp; Kuota Penggunaan</h2>
+                <p>Pantau pemakaian kuota harian sesuai paket aktif workspace kamu.</p>
+              </div>
+              <div class="btn-row">
+                <span class="creator" id="limitsPlanBadge">Paket: Creator+</span>
+                <button type="button" class="btn-secondary" id="resetLimitsBtn">Reset Counter Simulasi</button>
+              </div>
+            </div>
+
+            <div class="limits-grid">
+              <div class="limit-card">
+                <div class="limit-head">
+                  <strong>Media Converter Engine</strong>
+                  <span id="limConvText" class="mono-text">18 / 500</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill" id="limConvBar" style="width:4%;"></div></div>
+                <small>Konversi file tunggal audio &amp; gambar</small>
+              </div>
+
+              <div class="limit-card">
+                <div class="limit-head">
+                  <strong>Bulk Convert Queue</strong>
+                  <span id="limBulkText" class="mono-text">12 / 250</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill" id="limBulkBar" style="width:5%;"></div></div>
+                <small>Pemrosesan batch multi-file</small>
+              </div>
+
+              <div class="limit-card">
+                <div class="limit-head">
+                  <strong>Sakurayama Chat AI (Gemini)</strong>
+                  <span id="limAiText" class="mono-text">9 / 200</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill" id="limAiBar" style="width:5%;"></div></div>
+                <small>Permintaan generasi script Luau &amp; konsultasi AI</small>
+              </div>
+
+              <div class="limit-card">
+                <div class="limit-head">
+                  <strong>Roblox Cloud &amp; Spoofer API</strong>
+                  <span id="limRbxText" class="mono-text">24 / 1000</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill" id="limRbxBar" style="width:3%;"></div></div>
+                <small>Operasi spoofing, publishing, dan cek permission</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- VIEW: BUY PREMIUM -->
+        <div class="page-view" data-view="Buy Premium">
+          <div class="pricing-grid">
+            <div class="panel plan-card" data-plan="Starter">
+              <span class="stat-label">UNTUK HOBI &amp; PEMULA</span>
+              <h3>Starter</h3>
+              <div class="plan-price"><strong class="mono-text">Gratis</strong><span>/ selamanya</span></div>
+              <p>Akses dasar untuk konversi media tunggal dan uji coba tools Roblox.</p>
+              <ul class="plan-features">
+                <li>50 Konversi Media / hari</li>
+                <li>20 Bulk Convert / hari</li>
+                <li>25 Chat AI Request / hari</li>
+                <li>100 Roblox API Request / hari</li>
+              </ul>
+              <button type="button" class="btn-secondary select-plan-btn" data-plan="Starter">Pilih Starter</button>
+            </div>
+
+            <div class="panel plan-card featured" data-plan="Creator+">
+              <span class="stat-label gold-text">PALING POPULER</span>
+              <h3>Creator+</h3>
+              <div class="plan-price"><strong class="mono-text">Rp 79.000</strong><span>/ bulan</span></div>
+              <p>Dirancang untuk kreator aktif Roblox Studio yang butuh antrean cepat dan kuota lega.</p>
+              <ul class="plan-features">
+                <li>500 Konversi Media / hari</li>
+                <li>250 Bulk Convert / hari</li>
+                <li>200 Chat AI Request / hari</li>
+                <li>1.000 Roblox API Request / hari</li>
+              </ul>
+              <button type="button" class="btn-primary select-plan-btn" data-plan="Creator+">Aktifkan Creator+</button>
+            </div>
+
+            <div class="panel plan-card" data-plan="Studio Enterprise">
+              <span class="stat-label">UNTUK TIM &amp; GAME STUDIO</span>
+              <h3>Studio Enterprise</h3>
+              <div class="plan-price"><strong class="mono-text">Rp 249.000</strong><span>/ bulan</span></div>
+              <p>Kapasitas maksimal untuk tim produksi dengan ribuan aset dan kolaborasi grup.</p>
+              <ul class="plan-features">
+                <li>5.000 Konversi Media / hari</li>
+                <li>2.500 Bulk Convert / hari</li>
+                <li>1.000 Chat AI Request / hari</li>
+                <li>10.000 Roblox API Request / hari</li>
+              </ul>
+              <button type="button" class="btn-secondary select-plan-btn" data-plan="Studio Enterprise">Pilih Studio Enterprise</button>
+            </div>
+          </div>
+        </div>
+
         <footer>© 2026 Sakurayama Dashboard <span>Built for your workspace</span></footer>
       </section>
     </main>
   </div>
+  <div class="toast-container" id="toastContainer"></div>
   <div class="mobile-overlay" id="overlay"></div>
   <script src="/app.js"></script>
 </body>
