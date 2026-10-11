@@ -1396,8 +1396,9 @@ app.post("/api/roblox/publish", async (req, res) => {
     return res.status(400).json({ error: "Nama aset wajib diisi." });
   }
 
-  const cType = creatorType || state.settings.creatorType;
-  const cId = creatorId || state.settings.creatorId;
+  // Railway deployment values are authoritative when configured, so stale frontend state cannot silently override the target creator.
+  const cType = process.env.ROBLOX_CREATOR_TYPE || creatorType || state.settings.creatorType;
+  const cId = process.env.ROBLOX_CREATOR_ID || creatorId || state.settings.creatorId;
   const aType = type || "Animation";
 
   const hasLiveCredentials = Boolean(
@@ -1491,8 +1492,9 @@ app.post("/api/roblox/publish-batch", async (req, res) => {
     return res.status(400).json({ error: "Item ke-" + (missingFileIndex + 1) + " tidak memiliki file asli. ID/nama saja tidak bisa dipublikasikan sebagai aset baru ke Roblox." });
   }
   const maxItems = items;
-  const cType = creatorType || state.settings.creatorType;
-  const cId = creatorId || state.settings.creatorId;
+  // Railway deployment values are authoritative when configured, so stale frontend state cannot silently override the target creator.
+  const cType = process.env.ROBLOX_CREATOR_TYPE || creatorType || state.settings.creatorType;
+  const cId = process.env.ROBLOX_CREATOR_ID || creatorId || state.settings.creatorId;
   const defaultType = type || "Animation";
   const createdAssets = [];
   const hasLiveCredentials = Boolean(
