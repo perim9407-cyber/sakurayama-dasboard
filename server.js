@@ -392,9 +392,11 @@ async function uploadToRobloxDirect({ name, description, assetType, creatorType,
   if (!payloadBytes && originalAssetId) {
     payloadBytes = await fetchRobloxAssetBinary(originalAssetId, openCloudKey, robloxCookie);
   }
-  if (!payloadBytes && (assetType === "Animation" || assetType === "Model")) {
-    payloadBytes = createDefaultAnimationRbxmx(name);
-    fileName = fileName || `${name}.rbxmx`;
+  if (!payloadBytes && originalAssetId) {
+    throw new Error("Aset sumber " + cleanId + " tidak dapat diunduh. Aset mungkin private, tidak diizinkan, atau API key tidak memiliki akses. Pilih file asli untuk upload.");
+  }
+  if (!payloadBytes) {
+    throw new Error("File aset asli wajib dipilih. Dashboard tidak akan membuat file placeholder lalu mengklaim upload berhasil.");
   }
 
   // Primary Path: Pure Roblox Open Cloud API Key (NO .ROBLOSECURITY cookie needed!)
@@ -1468,7 +1470,14 @@ app.post("/api/roblox/publish-batch", async (req, res) => {
     return res.status(400).json({ error: "Daftar aset yang akan di-publish masih kosong." });
   }
 
-  const maxItems = items.slice(0, 5000);
+  if (items.length > 25) {
+    return res.status(400).json({ error: "Mass publish live dibatasi maksimal 25 file per batch. Kirim batch lebih kecil agar setiap upload bisa diverifikasi." });
+  }
+  const missingFileIndex = items.findIndex(item => !item || !item.fileBase64 || !item.fileName);
+  if (missingFileIndex !== -1) {
+    return res.status(400).json({ error: "Item ke-" + (missingFileIndex + 1) + " tidak memiliki file asli. ID/nama saja tidak bisa dipublikasikan sebagai aset baru ke Roblox." });
+  }
+  const maxItems = items;
   const cType = creatorType || state.settings.creatorType;
   const cId = creatorId || state.settings.creatorId;
   const defaultType = type || "Animation";
@@ -1477,6 +1486,9 @@ app.post("/api/roblox/publish-batch", async (req, res) => {
     (state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim() ||
     (state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim()
   );
+  if (!hasLiveCredentials) {
+    return res.status(400).json({ error: "Mass publish live memerlukan kredensial Roblox yang tersimpan. Tidak ada ID aset simulasi yang akan dibuat." });
+  }
 
   let liveSuccessCount = 0;
   let lastLiveError = null;
@@ -1566,17 +1578,7 @@ app.get("/api/roblox/permissions/:assetId", (req, res) => {
     return res.status(400).json({ error: "Asset ID tidak valid." });
   }
   if (!state.permissions[cleanId]) {
-    state.permissions[cleanId] = {
-      assetId: cleanId,
-      name: `Roblox Asset #${cleanId}`,
-      type: "Audio / Animation",
-      owner: `${state.settings.creatorType} #${state.settings.creatorId}`,
-      visibility: "Private",
-      allowCopying: false,
-      authorizedPlaces: [
-        { placeId: "892341029", name: "Sakurayama RPG - Main Hub", access: "Use & View", addedAt: "2026-10-10" }
-      ]
-    };
+    return res.status(404).json({ error: "Data permission aset ini belum tersedia di sesi dashboard. Dashboard tidak akan mengarang permission Roblox live." });
   }
   state.apiUsage.robloxUsed += 1;
   res.json({ permission: state.permissions[cleanId], apiUsage: state.apiUsage });
@@ -1700,19 +1702,14 @@ app.post("/api/roblox/verify-credentials", async (req, res) => {
     }
   }
 
-  if (activeKey) {
-    state.settings.openCloudKey = activeKey;
-    results.ok = true;
-  }
-
-  state.settings.openCloudConnected = Boolean(state.settings.openCloudKey || state.settings.robloxCookie);
-
+  if (activeKey) state.settings.openCloudKey = activeKey;
+  state.settings.openCloudConnected = Boolean(results.cookieValid);
   if (results.cookieValid && results.detectedUser) {
-    results.message = `Terhubung ke Akun Roblox: @${results.detectedUser.name} (User ID: ${results.detectedUser.id}). Siap Direct Upload semua aset!`;
+    results.message = `Terautentikasi sebagai @${results.detectedUser.name} (User ID: ${results.detectedUser.id}).`;
   } else if (results.openCloudConfigured) {
-    results.message = `Open Cloud API Key aktif untuk ${creatorType || state.settings.creatorType} #${creatorId || state.settings.creatorId}. Siap Direct Upload Animation (.rbxm), Audio (.ogg/.mp3/.wav), Decal (.png), & Model tanpa Cookie!`;
+    results.ok = false;
+    results.message = "API key tersimpan, tetapi belum tervalidasi. Key harus diuji pada endpoint yang sesuai dengan scope dan asset/creator target. Coba upload file asli; server akan menampilkan HTTP error Roblox jika scope, creator, atau key tidak cocok.";
   }
-
   res.json(results);
 });
 
