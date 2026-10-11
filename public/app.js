@@ -1555,10 +1555,11 @@ document.getElementById("publishForm").addEventListener("submit", async e => {
     return;
   }
 
-  // Single Publish
+  // Single Publish (includes actual file bytes for Direct Roblox Open Cloud Upload)
   let finalName = pubName.value.trim();
-  if (!finalName && pubFile.files?.[0]) {
-    finalName = stripFileExt(pubFile.files[0].name);
+  const uploadedFile = pubFile.files?.[0] || null;
+  if (!finalName && uploadedFile) {
+    finalName = stripFileExt(uploadedFile.name);
     pubName.value = finalName;
   }
   if (!finalName) {
@@ -1566,12 +1567,33 @@ document.getElementById("publishForm").addEventListener("submit", async e => {
     pubName.value = finalName;
   }
 
+  let fileBase64 = null;
+  let fileName = null;
+  let mimeType = null;
+
+  if (uploadedFile && uploadedFile.size <= 20 * 1024 * 1024) {
+    try {
+      const buf = await uploadedFile.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buf);
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      fileBase64 = btoa(binary);
+      fileName = uploadedFile.name;
+      mimeType = uploadedFile.type || "application/octet-stream";
+    } catch {}
+  }
+
   const payload = {
     name: finalName,
     type: pubType.value,
     creatorType: document.getElementById("pubCreatorType").value,
     creatorId: document.getElementById("pubCreatorId").value,
-    description: document.getElementById("pubDesc").value || `Uploaded file: ${finalName}`
+    description: document.getElementById("pubDesc").value || `Uploaded file: ${finalName}`,
+    fileBase64,
+    fileName,
+    mimeType
   };
 
   const res = await fetch("/api/roblox/publish", {
@@ -1729,7 +1751,14 @@ function renderSettingsForm() {
 
   document.getElementById("settingsSummaryCreator").textContent = `${s.creatorType} #${s.creatorId}`;
   document.getElementById("settingsSummaryRig").textContent = `${s.defaultRig} · ${s.defaultPriority}`;
-  document.getElementById("settingsSummaryLog").textContent = s.autoExportHistory ? "Aktif" : "Nonaktif";
+  const modeText = document.getElementById("settingsUploadModeText");
+  const ocBadge = document.getElementById("settingsOpenCloudBadge");
+  if (modeText) {
+    modeText.textContent = s.openCloudConnected ? "Live Roblox Open Cloud API" : "Auto (Open Cloud / Studio Registry)";
+  }
+  if (ocBadge) {
+    ocBadge.textContent = s.openCloudConnected ? "● Open Cloud Live" : "● Ready (Set ROBLOX_API_KEY in Railway)";
+  }
 
   // Sync defaults to Publishing & Spoofer forms
   document.getElementById("pubCreatorType").value = s.creatorType;

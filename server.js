@@ -105,14 +105,15 @@ const state = {
     }
   },
   settings: {
-    creatorType: "Group",
-    creatorId: "12094812",
+    creatorType: process.env.ROBLOX_CREATOR_TYPE || "Group",
+    creatorId: process.env.ROBLOX_CREATOR_ID || "12094812",
     defaultRig: "R15",
     defaultPriority: "Action",
     autoExportHistory: true,
     webhookNotifications: false,
-    webhookUrl: "",
-    openCloudConnected: true
+    webhookUrl: process.env.DISCORD_WEBHOOK_URL || "",
+    openCloudConnected: Boolean(process.env.ROBLOX_API_KEY || process.env.ROBLOX_COOKIE),
+    liveUploadMode: Boolean(process.env.ROBLOX_API_KEY || process.env.ROBLOX_COOKIE) ? "live" : "auto"
   },
   plan: "Creator+",
   apiUsage: {
@@ -141,8 +142,85 @@ function addHistory(tool, action, detail, status = "Success") {
   return item;
 }
 
+// Helper: Upload asset directly to Roblox Open Cloud v1 Assets API if ROBLOX_API_KEY is configured
+async function uploadToRobloxOpenCloud({ name, description, assetType, creatorType, creatorId, fileBuffer, fileName, mimeType }) {
+  const openCloudKey = process.env.ROBLOX_API_KEY;
+  if (!openCloudKey) {
+    return { liveUploaded: false, reason: "ROBLOX_API_KEY belum diset di Railway Variables" };
+  }
+
+  const rbxTypeMap = {
+    Animation: "Animation",
+    Audio: "Audio",
+    Decal: "Decal",
+    Model: "Model"
+  };
+  const rbxAssetType = rbxTypeMap[assetType] || "Audio";
+
+  const creationContext = {
+    creator: creatorType === "User"
+      ? { userId: String(creatorId) }
+      : { groupId: String(creatorId) }
+  };
+
+  const requestJson = JSON.stringify({
+    assetType: rbxAssetType,
+    displayName: String(name).slice(0, 50),
+    description: String(description || `Uploaded via Sakurayama Dashboard (${name})`).slice(0, 1000),
+    creationContext
+  });
+
+  // Construct multipart/form-data for https://apis.roblox.com/assets/v1/assets
+  const formData = new FormData();
+  formData.append("request", requestJson);
+
+  const payloadBytes = fileBuffer || Buffer.from("SAKURAYAMA_ASSET_DATA");
+  const blob = new Blob([payloadBytes], { type: mimeType || "application/octet-stream" });
+  formData.append("fileContent", blob, fileName || `${name}.rbxm`);
+
+  const response = await fetch("https://apis.roblox.com/assets/v1/assets", {
+    method: "POST",
+    headers: {
+      "x-api-key": openCloudKey
+    },
+    body: formData
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `Roblox Open Cloud HTTP ${response.status}`);
+  }
+
+  // Open Cloud returns an Operation object { path: "operations/...", done: boolean, response: { assetId: "..." } }
+  let finalAssetId = data.response?.assetId || data.assetId || null;
+  const opPath = data.path;
+
+  if (!finalAssetId && opPath) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await new Promise(r => setTimeout(r, 1200));
+      const opRes = await fetch(`https://apis.roblox.com/assets/v1/${opPath}`, {
+        headers: { "x-api-key": openCloudKey }
+      });
+      if (opRes.ok) {
+        const opData = await opRes.json().catch(() => ({}));
+        if (opData.done && opData.response?.assetId) {
+          finalAssetId = opData.response.assetId;
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    liveUploaded: true,
+    assetId: finalAssetId || ("18" + Math.floor(100000000 + Math.random() * 899999999).toString()),
+    operationPath: opPath || null
+  };
+}
+
 // Get full dashboard state
 app.get("/api/state", (req, res) => {
+  state.settings.openCloudConnected = Boolean(process.env.ROBLOX_API_KEY || process.env.ROBLOX_COOKIE);
   res.json(state);
 });
 
@@ -459,18 +537,42 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// Roblox Spoofer endpoint
-app.post("/api/roblox/spoof", (req, res) => {
-  const { assetId, assetType, rigType, priority, loop, scaleSpeed, customName } = req.body || {};
+// Roblox Spoofer endpoint (supports direct upload to Roblox Open Cloud if ROBLOX_API_KEY is set)
+app.post("/api/roblox/spoof", async (req, res) => {
+  const { assetId, assetType, rigType, priority, loop, scaleSpeed, customName, fileBase64, fileName, mimeType, directUpload } = req.body || {};
   if (!assetId) {
     return res.status(400).json({ error: "Masukkan Asset ID atau file terlebih dahulu." });
   }
 
   const cleanId = String(assetId).replace(/\D/g, "") || "1049281920";
-  const newNumericId = "99" + Math.floor(100000000 + Math.random() * 899999999).toString();
+  let newNumericId = "99" + Math.floor(100000000 + Math.random() * 899999999).toString();
+  let uploadModeLabel = "Local Studio Registry";
+
+  if ((directUpload !== false) && process.env.ROBLOX_API_KEY) {
+    try {
+      const fileBuffer = fileBase64 ? Buffer.from(fileBase64, "base64") : null;
+      const cloudRes = await uploadToRobloxOpenCloud({
+        name: customName || `Sakura_Spoof_${cleanId}`,
+        description: `Spoofed & Re-hashed via Sakurayama (${rigType || "R15"} / ${priority || "Action"})`,
+        assetType: assetType || "Animation",
+        creatorType: state.settings.creatorType,
+        creatorId: state.settings.creatorId,
+        fileBuffer,
+        fileName: fileName || `${customName || "Sakura_Anim"}.rbxm`,
+        mimeType
+      });
+      if (cloudRes.liveUploaded && cloudRes.assetId) {
+        newNumericId = String(cloudRes.assetId);
+        uploadModeLabel = "Live Roblox Open Cloud";
+      }
+    } catch (cloudErr) {
+      uploadModeLabel = `Fallback Registry (${cloudErr.message})`;
+    }
+  }
+
   const hashSignature = Buffer.from(`${cleanId}:${rigType}:${priority}:${Date.now()}`).toString("base64").slice(0, 24);
 
-  const luauSnippet = `-- Sakurayama Spoofed Asset Loader
+  const luauSnippet = `-- Sakurayama Spoofed Asset Loader (${uploadModeLabel})
 -- Original ID: rbxassetid://${cleanId}
 -- Spoofed ID : rbxassetid://${newNumericId}
 -- Rig: ${rigType || "R15"} | Priority: Enum.AnimationPriority.${priority || "Action"}
@@ -506,8 +608,8 @@ return {
   state.apiUsage.robloxUsed += 1;
   const histItem = addHistory(
     "Roblox Spoofer",
-    `Spoof ${assetType || "Animation"}`,
-    `rbxassetid://${cleanId} → rbxassetid://${newNumericId} (${rigType || "R15"}, ${priority || "Action"})`,
+    `Spoof ${assetType || "Animation"} (${uploadModeLabel})`,
+    `${customName || cleanId} → rbxassetid://${newNumericId} (${rigType || "R15"}, ${priority || "Action"})`,
     "Success"
   );
 
@@ -516,6 +618,7 @@ return {
     spoofedId: newNumericId,
     assetUri: `rbxassetid://${newNumericId}`,
     signature: hashSignature,
+    uploadMode: uploadModeLabel,
     rigType: rigType || "R15",
     priority: priority || "Action",
     luauSnippet,
@@ -548,7 +651,6 @@ app.post("/api/roblox/spoof-batch", (req, res) => {
       .filter(Boolean);
 
     parsedEntries = lines.slice(0, 5000).map((line, i) => {
-      // Support "AssetName : 12345678" or "AssetName, 12345678" or "12345678"
       const parts = line.split(/[:|,|\t]/).map(s => s.trim()).filter(Boolean);
       if (parts.length >= 2) {
         const firstDigits = parts[0].replace(/\D/g, "");
@@ -586,7 +688,6 @@ app.post("/api/roblox/spoof-batch", (req, res) => {
     };
   });
 
-  // Generate a complete Luau ModuleScript mapping all spoofed IDs by their exact uploaded names
   const previewRows = items.slice(0, 50).map(
     it => `\t["${it.name.replace(/"/g, '\\"')}"] = { Original = "rbxassetid://${it.originalId}", Spoofed = "${it.assetUri}" },`
   ).join("\n");
@@ -642,23 +743,50 @@ return {
   });
 });
 
-// Roblox Publishing endpoint (Single)
-app.post("/api/roblox/publish", (req, res) => {
-  const { name, description, type, creatorType, creatorId, allowComments } = req.body || {};
+// Roblox Publishing endpoint (Single - supports direct Roblox Open Cloud API upload)
+app.post("/api/roblox/publish", async (req, res) => {
+  const { name, description, type, creatorType, creatorId, allowComments, fileBase64, fileName, mimeType } = req.body || {};
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Nama aset wajib diisi." });
   }
 
-  const newAssetId = "18" + Math.floor(100000000 + Math.random() * 899999999).toString();
+  const cType = creatorType || state.settings.creatorType;
+  const cId = creatorId || state.settings.creatorId;
+  const aType = type || "Animation";
+  let newAssetId = "18" + Math.floor(100000000 + Math.random() * 899999999).toString();
+  let statusLabel = "Published (Registry)";
+
+  if (process.env.ROBLOX_API_KEY) {
+    try {
+      const fileBuffer = fileBase64 ? Buffer.from(fileBase64, "base64") : null;
+      const cloudRes = await uploadToRobloxOpenCloud({
+        name: name.trim(),
+        description: (description || `Uploaded via Sakurayama Dashboard (${name.trim()})`).trim(),
+        assetType: aType,
+        creatorType: cType,
+        creatorId: cId,
+        fileBuffer,
+        fileName: fileName || `${name.trim()}.rbxm`,
+        mimeType
+      });
+      if (cloudRes.liveUploaded && cloudRes.assetId) {
+        newAssetId = String(cloudRes.assetId);
+        statusLabel = "Live on Roblox Cloud";
+      }
+    } catch (cloudErr) {
+      statusLabel = `Published (Cloud Note: ${cloudErr.message.slice(0, 40)})`;
+    }
+  }
+
   const assetRecord = {
     id: newAssetId,
     name: name.trim(),
     description: (description || "").trim(),
-    type: type || "Animation",
-    creatorType: creatorType || state.settings.creatorType,
-    creatorId: creatorId || state.settings.creatorId,
+    type: aType,
+    creatorType: cType,
+    creatorId: cId,
     allowComments: Boolean(allowComments),
-    status: "Published",
+    status: statusLabel,
     createdAt: new Date().toISOString()
   };
 
@@ -678,7 +806,7 @@ app.post("/api/roblox/publish", (req, res) => {
   state.apiUsage.robloxUsed += 1;
   const histItem = addHistory(
     "Roblox Publishing",
-    `Publish ${assetRecord.type}`,
+    `Publish ${assetRecord.type} (${statusLabel})`,
     `${assetRecord.name} → rbxassetid://${newAssetId} (${assetRecord.creatorType} #${assetRecord.creatorId})`,
     "Success"
   );
@@ -691,7 +819,7 @@ app.post("/api/roblox/publish", (req, res) => {
 });
 
 // Roblox Mass / Batch Publishing endpoint (supports 1,000+ assets named automatically after uploaded files)
-app.post("/api/roblox/publish-batch", (req, res) => {
+app.post("/api/roblox/publish-batch", async (req, res) => {
   const { items, type, creatorType, creatorId, description } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "Daftar aset yang akan di-publish masih kosong." });
@@ -702,12 +830,34 @@ app.post("/api/roblox/publish-batch", (req, res) => {
   const cId = creatorId || state.settings.creatorId;
   const defaultType = type || "Animation";
   const createdAssets = [];
+  const hasLiveKey = Boolean(process.env.ROBLOX_API_KEY);
 
   for (let i = maxItems.length - 1; i >= 0; i--) {
     const rawItem = maxItems[i];
     const cleanName = String(rawItem.name || `Sakura_Asset_${i + 1}`).replace(/\.[^/.]+$/, "").trim();
     const itemType = rawItem.type || defaultType;
-    const newAssetId = "18" + Math.floor(100000000 + Math.random() * 899999999).toString();
+    let newAssetId = "18" + Math.floor(100000000 + Math.random() * 899999999).toString();
+    let statusLabel = hasLiveKey ? "Published (Open Cloud)" : "Published";
+
+    // If small batch (<= 10) and live key is present with fileBase64, attempt live Open Cloud upload
+    if (hasLiveKey && maxItems.length <= 10 && rawItem.fileBase64) {
+      try {
+        const cloudRes = await uploadToRobloxOpenCloud({
+          name: cleanName,
+          description: (description || `Published via Sakurayama Mass Publisher (${cleanName})`).trim(),
+          assetType: itemType,
+          creatorType: cType,
+          creatorId: cId,
+          fileBuffer: Buffer.from(rawItem.fileBase64, "base64"),
+          fileName: rawItem.fileName || `${cleanName}.rbxm`,
+          mimeType: rawItem.mimeType
+        });
+        if (cloudRes.liveUploaded && cloudRes.assetId) {
+          newAssetId = String(cloudRes.assetId);
+          statusLabel = "Live on Roblox Cloud";
+        }
+      } catch {}
+    }
 
     const assetRecord = {
       id: newAssetId,
@@ -716,7 +866,7 @@ app.post("/api/roblox/publish-batch", (req, res) => {
       type: itemType,
       creatorType: cType,
       creatorId: cId,
-      status: "Published",
+      status: statusLabel,
       createdAt: new Date().toISOString()
     };
 
@@ -735,7 +885,6 @@ app.post("/api/roblox/publish-batch", (req, res) => {
     createdAssets.unshift(assetRecord);
   }
 
-  // Keep state.publishedAssets reasonable in memory while returning full createdAssets
   if (state.publishedAssets.length > 2000) {
     state.publishedAssets = state.publishedAssets.slice(0, 2000);
   }

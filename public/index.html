@@ -838,14 +838,21 @@
 
             <div class="panel">
               <div class="panel-heading">
-                <div><h2>Status Lingkungan &amp; Koneksi</h2><p>Informasi sinkronisasi dengan konfigurasi server.</p></div>
-                <span class="good">● Terhubung</span>
+                <div><h2>Status Railway &amp; Direct Upload Roblox</h2><p>Koneksi otomatis ke Roblox Open Cloud v1 Assets API.</p></div>
+                <span class="good" id="settingsOpenCloudBadge">● Ready</span>
               </div>
-              <div class="status-line"><span>Mode Otentikasi Open Cloud</span><strong class="good">Server-Side Proxy</strong></div>
+              <div class="status-line"><span>Mode Upload Roblox</span><strong class="good" id="settingsUploadModeText">Direct Open Cloud / Registry</strong></div>
               <div class="status-line"><span>Target Creator Aktif</span><strong id="settingsSummaryCreator">Group #12094812</strong></div>
               <div class="status-line"><span>Preset Animasi Default</span><strong id="settingsSummaryRig">R15 · Action</strong></div>
-              <div class="status-line"><span>Auto-Log History</span><strong id="settingsSummaryLog" class="good">Aktif</strong></div>
-              <div class="status-foot">Semua perubahan pengaturan akan langsung diterapkan sebagai nilai default pada halaman Spoofer, Publishing, dan Asset Permission.</div>
+              <div class="status-line"><span>Railway Build Config</span><strong class="good">nixpacks.toml + railway.json</strong></div>
+              <div class="code-header" style="margin-top:14px;">
+                <span>Variabel Environment di Railway (Tab Variables)</span>
+              </div>
+              <pre class="code-block" style="max-height:145px;">ROBLOX_API_KEY=isi_open_cloud_api_key_kamu
+ROBLOX_CREATOR_TYPE=Group
+ROBLOX_CREATOR_ID=12094812
+GEMINI_API_KEY=isi_gemini_api_key_kamu</pre>
+              <div class="status-foot">Saat <strong>ROBLOX_API_KEY</strong> diisi pada tab <strong>Variables</strong> di Railway, setiap file yang kamu upload di halaman <strong>Roblox Spoofer</strong> &amp; <strong>Roblox Publishing</strong> akan langsung di-push ke inventori Group/User Roblox kamu melalui endpoint resmi <code>apis.roblox.com/assets/v1/assets</code>.</div>
             </div>
           </div>
         </div>
