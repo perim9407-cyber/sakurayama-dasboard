@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d0e">
+  <title>Sakurayama Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">S</div>
+        <div><strong>SAKURAYAMA</strong><small>TOOLS WORKSPACE</small></div>
+        <button class="close-sidebar" id="closeSidebar" aria-label="Tutup menu">×</button>
+      </div>
+      <nav>
+        <div class="nav-label">WORKSPACE</div>
+        <button class="nav-item active" data-page="Home"><span class="nav-icon">⌂</span>Home</button>
+        <button class="nav-item" data-page="Converter"><span class="nav-icon">♫</span>Converter</button>
+        <button class="nav-item" data-page="Bulk Convert"><span class="nav-icon">☷</span><span>Bulk Convert</span><span class="creator">Creator+</span></button>
+        <button class="nav-item" data-page="Chat AI"><span class="nav-icon">◌</span>Chat AI</button>
+        <button class="nav-item" data-page="History"><span class="nav-icon">◷</span>History</button>
+        <div class="nav-divider"></div>
+        <div class="nav-label">ROBLOX TOOLS</div>
+        <button class="nav-item" data-page="Roblox Spoofer"><span class="nav-icon">◈</span>Roblox Spoofer</button>
+        <button class="nav-item" data-page="Roblox Publishing"><span class="nav-icon">⌁</span>Roblox Publishing</button>
+        <button class="nav-item" data-page="Roblox Asset Permission"><span class="nav-icon">⬡</span><span>Roblox Asset<br>Permission</span></button>
+        <button class="nav-item" data-page="Roblox Settings"><span class="nav-icon">⚙</span>Roblox Settings</button>
+        <div class="nav-divider"></div>
+        <div class="nav-label">INFORMATION</div>
+        <button class="nav-item" data-page="API Limits"><span class="nav-icon">⬡</span>API Limits</button>
+        <button class="nav-item" data-page="Buy Premium"><span class="nav-icon">▤</span>Buy Premium</button>
+      </nav>
+      <div class="sidebar-footer"><span class="status-dot"></span> Interface preview <span class="version">v1.0</span></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button>
+        <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="crumb">Home</strong></div>
+        <div class="top-actions"><span class="online"><i></i> System ready</span><div class="avatar">S</div></div>
+      </header>
+      <section class="content">
+        <div class="welcome-row">
+          <div><div class="eyebrow">SAKURAYAMA WORKSPACE</div><h1 id="pageTitle">Welcome back.</h1><p id="pageDescription">Semua tools kamu, dalam satu dashboard.</p></div>
+          <div class="date-chip"><span class="date-dot"></span> Dashboard preview</div>
+        </div>
+        <div class="notice"><span class="notice-icon">✦</span><div><strong>Selamat datang di Sakurayama</strong><p>Ini adalah starter dashboard. Pilih menu di sidebar untuk melihat halaman setiap tool.</p></div><button id="dismissNotice" aria-label="Tutup pemberitahuan">×</button></div>
+        <div class="section-heading"><div><h2>Workspace overview</h2><p>Ringkasan menu dan akses tools.</p></div><span class="subtle-label">QUICK ACCESS</span></div>
+        <div class="stats-grid">
+          <button class="stat-card" data-page="Converter"><div class="stat-top"><span class="stat-icon">♫</span><span class="card-arrow">↗</span></div><span class="stat-label">MEDIA TOOLS</span><strong>Converter</strong><p>Halaman konversi media</p></button>
+          <button class="stat-card" data-page="Roblox Publishing"><div class="stat-top"><span class="stat-icon">⌁</span><span class="card-arrow">↗</span></div><span class="stat-label">ROBLOX TOOLS</span><strong>Publishing</strong><p>Persiapan publikasi aset</p></button>
+          <button class="stat-card" data-page="Roblox Asset Permission"><div class="stat-top"><span class="stat-icon">⬡</span><span class="card-arrow">↗</span></div><span class="stat-label">ASSET MANAGEMENT</span><strong>Asset Permission</strong><p>Informasi akses aset</p></button>
+          <button class="stat-card" data-page="API Limits"><div class="stat-top"><span class="stat-icon">⌁</span><span class="card-arrow">↗</span></div><span class="stat-label">INFORMATION</span><strong>API Limits</strong><p>Ruang untuk status API</p></button>
+        </div>
+        <div class="lower-grid">
+          <div class="panel"><div class="panel-heading"><div><h2>Quick actions</h2><p>Pilih halaman untuk mulai.</p></div><span class="panel-symbol">⌘</span></div><div class="quick-list">
+            <button data-page="Bulk Convert"><span class="quick-icon">☷</span><span><strong>Bulk Convert</strong><small>Kelola banyak item dalam satu alur</small></span><b>→</b></button>
+            <button data-page="Chat AI"><span class="quick-icon">◌</span><span><strong>Chat AI</strong><small>Ruang untuk fitur asisten</small></span><b>→</b></button>
+            <button data-page="Roblox Settings"><span class="quick-icon">⚙</span><span><strong>Roblox Settings</strong><small>Pengaturan integrasi</small></span><b>→</b></button>
+          </div></div>
+          <div class="panel status-panel"><div class="panel-heading"><div><h2>System status</h2><p>Status interface saat ini.</p></div><span class="pulse"></span></div>
+            <div class="status-line"><span>Dashboard interface</span><strong class="good">● Ready</strong></div>
+            <div class="status-line"><span>Backend server</span><strong class="good">● Online</strong></div>
+            <div class="status-line"><span>Roblox API integration</span><strong class="pending">Not configured</strong></div>
+            <div class="status-foot">Integrasi API belum diaktifkan. Tambahkan backend dan kredensial resmi saat fitur siap.</div>
+          </div>
+        </div>
+        <footer>© 2026 Sakurayama Dashboard <span>Built for your workspace</span></footer>
+      </section>
+    </main>
+  </div>
+  <div class="mobile-overlay" id="overlay"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
