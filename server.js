@@ -333,7 +333,15 @@ async function postToRobloxOpenCloudV1({ openCloudKey, rbxAssetType, displayName
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const errMsg = data.message || data.error || JSON.stringify(data);
-    const err = new Error(`Roblox Open Cloud (HTTP ${response.status}): ${errMsg}`);
+    let detail = `Roblox Open Cloud (HTTP ${response.status}): ${errMsg}`;
+    if (response.status === 403 && /unauthorized to create an? audio asset as group/i.test(errMsg)) {
+      detail += " | Perbaikan: cek Roblox Settings. Jika ID tersebut adalah User ID, ubah Creator Type menjadi User. Jika ingin upload atas nama grup, gunakan Group ID asli (bukan User ID), lalu pastikan API key memiliki izin Assets: Create untuk grup itu dan akun pemilik key punya hak yang diperlukan di grup. Jangan kirim API key ke siapa pun.";
+    } else if (response.status === 403) {
+      detail += " | HTTP 403 biasanya berarti API key tidak punya scope/izin untuk operasi atau creator target. Periksa scope API key, Creator Type/ID, dan izin akun pada grup.";
+    } else if (response.status === 401) {
+      detail += " | API key tidak valid atau tidak diterima Roblox. Periksa key di konfigurasi server.";
+    }
+    const err = new Error(detail);
     err.status = response.status;
     throw err;
   }
