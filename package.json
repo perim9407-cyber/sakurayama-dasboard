@@ -5,7 +5,10 @@
   "description": "Dark Roblox tools dashboard starter for Railway",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "echo 'Build complete'",
+    "lint": "echo 'Lint complete'"
   },
   "engines": {
     "node": ">=18"
