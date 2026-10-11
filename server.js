@@ -418,8 +418,12 @@ async function uploadToRobloxDirect({ name, description, assetType, creatorType,
       throw new Error("Creator ID / Group ID wajib berupa angka ID Roblox kamu yang asli.");
     }
 
+    const normalizedCreatorType = String(creatorType || "").trim().toLowerCase();
+    if (!["user", "group"].includes(normalizedCreatorType)) {
+      throw new Error("Creator Type tidak valid. Pilih User atau Group secara eksplisit.");
+    }
     const creationContext = {
-      creator: creatorType === "User"
+      creator: normalizedCreatorType === "user"
         ? { userId: cleanNumericId }
         : { groupId: cleanNumericId }
     };
