@@ -206,14 +206,57 @@ convCategory.addEventListener("change", () => {
     ? `<option value="png">PNG (Lossless Decal / UI)</option>
        <option value="webp">WEBP (High Compression)</option>
        <option value="jpeg">JPG (Standard Image)</option>`
-    : `<option value="wav">WAV (Lossless PCM 16-bit)</option>
-       <option value="ogg">OGG (Roblox Audio Optimized)</option>
-       <option value="mp3">MP3 (Standard Audio)</option>`;
-  document.getElementById("convSampleRateGroup").classList.toggle("hidden", isImage);
-  document.getElementById("convChannelsGroup").classList.toggle("hidden", isImage);
-  document.getElementById("convSpeedGroup").classList.toggle("hidden", isImage);
-  document.getElementById("convNormalizeGroup").classList.toggle("hidden", isImage);
+    : `<option value="ogg" selected>OGG (Roblox Audio Optimized - Hemat Ukuran)</option>
+       <option value="mp3">MP3 (Standard Audio)</option>
+       <option value="wav">WAV (Lossless PCM 16-bit)</option>`;
+  document.getElementById("convSampleRateGroup")?.classList.toggle("hidden", isImage);
+  document.getElementById("convBitrateGroup")?.classList.toggle("hidden", isImage);
+  document.getElementById("convChannelsGroup")?.classList.toggle("hidden", isImage);
+  document.getElementById("convSpeedGroup")?.classList.toggle("hidden", isImage);
+  document.getElementById("convTrimStartGroup")?.classList.toggle("hidden", isImage);
+  document.getElementById("convTrimEndGroup")?.classList.toggle("hidden", isImage);
+  document.getElementById("convNormalizeGroup")?.classList.toggle("hidden", isImage);
 });
+
+// Roblox Asset ID Downloader handler
+const rbxDownloadBtn = document.getElementById("rbxDownloadBtn");
+const rbxDownloadIdInput = document.getElementById("rbxDownloadIdInput");
+if (rbxDownloadBtn && rbxDownloadIdInput) {
+  rbxDownloadBtn.addEventListener("click", async () => {
+    const cleanId = (rbxDownloadIdInput.value || "").replace(/\D/g, "");
+    if (!cleanId) {
+      showToast("Masukkan Roblox Asset ID berupa angka terlebih dahulu.");
+      return;
+    }
+    const prev = rbxDownloadBtn.textContent;
+    rbxDownloadBtn.textContent = "Mengunduh...";
+    rbxDownloadBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/roblox/download/${cleanId}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Gagal mengunduh aset Roblox.");
+      }
+      const blob = await res.blob();
+      const disp = res.headers.get("Content-Disposition") || "";
+      const m = disp.match(/filename="([^"]+)"/);
+      const fname = m ? m[1] : `roblox_asset_${cleanId}.rbxm`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fname;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Aset Roblox #${cleanId} berhasil diunduh (${fname})!`);
+      fetchInitialState();
+    } catch (err) {
+      showToast(err.message || "Gagal mengunduh aset Roblox.");
+    } finally {
+      rbxDownloadBtn.textContent = prev;
+      rbxDownloadBtn.disabled = false;
+    }
+  });
+}
 
 document.getElementById("selectSingleFileBtn").addEventListener("click", () => {
   singleFileInput.click();
@@ -251,6 +294,49 @@ function setSingleFile(file) {
     convCategory.value = "audio";
     convCategory.dispatchEvent(new Event("change"));
   }
+}
+
+// Helper to convert ArrayBuffer to Base64 safely
+function arrayBufferToBase64(buf) {
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+// Convert local audio file via server FFmpeg for true OGG / MP3 / WAV encoding
+async function convertLocalAudioOnServer(file, { format = "ogg", sampleRate = 44100, bitrate = "128k", channels = "stereo", speed = 1.0, trimStart = 0, trimEnd = 0, fadeIn = false, normalize = true }) {
+  const buf = await file.arrayBuffer();
+  const fileBase64 = arrayBufferToBase64(buf);
+  const res = await fetch("/api/convert/audio", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fileBase64,
+      fileName: file.name,
+      format,
+      sampleRate,
+      bitrate,
+      channels,
+      speed,
+      trimStart,
+      trimEnd,
+      fadeIn,
+      normalize
+    })
+  });
+  if (!res.ok) {
+    let errMsg = "Gagal mengonversi audio di server.";
+    try {
+      const errData = await res.json();
+      if (errData && errData.error) errMsg = errData.error;
+    } catch {}
+    throw new Error(errMsg);
+  }
+  return await res.blob();
 }
 
 // Generate procedural chime WAV in browser when user clicks "Gunakan Sample Audio"
@@ -314,10 +400,14 @@ async function loadYouTubeAsAudioFile(ytUrl, options = {}) {
   }
 
   const safeBaseName = slugifyTitle(info.title);
-  const format = options.format || "wav";
+  const format = options.format || "ogg";
   const sampleRate = options.sampleRate || 44100;
+  const bitrate = options.bitrate || "128k";
   const channels = options.channels || "stereo";
   const speed = options.speed || 1.0;
+  const trimStart = options.trimStart || 0;
+  const trimEnd = options.trimEnd || 0;
+  const fadeIn = options.fadeIn ? "1" : "0";
   const normalize = options.normalize !== false ? "1" : "0";
 
   const cleanTitle = String(info.title || "")
@@ -329,8 +419,12 @@ async function loadYouTubeAsAudioFile(ytUrl, options = {}) {
     q: `${cleanTitle} ${info.author || ""}`.trim(),
     format,
     sampleRate: String(sampleRate),
+    bitrate: String(bitrate),
     channels,
     speed: String(speed),
+    trimStart: String(trimStart),
+    trimEnd: String(trimEnd),
+    fadeIn,
     normalize
   });
 
@@ -343,6 +437,11 @@ async function loadYouTubeAsAudioFile(ytUrl, options = {}) {
     } catch {}
     throw new Error(errMsg);
   }
+  const exactDurHeader = Number(streamRes.headers.get("X-Audio-Duration")) || 0;
+  if (exactDurHeader > 0 && !info.durationSeconds) {
+    info.durationSeconds = exactDurHeader;
+  }
+
   const fetchedBlob = await streamRes.blob();
   if (!fetchedBlob || fetchedBlob.size < 1024) {
     throw new Error("Stream audio YouTube kosong atau tidak tersedia.");
@@ -350,7 +449,7 @@ async function loadYouTubeAsAudioFile(ytUrl, options = {}) {
 
   const ext = format === "webm" ? "webm" : format;
   const fileObj = new File([fetchedBlob], `${safeBaseName}.${ext}`, {
-    type: fetchedBlob.type || `audio/${ext}`
+    type: fetchedBlob.type || (ext === "mp3" ? "audio/mpeg" : ext === "wav" ? "audio/wav" : "audio/ogg")
   });
   fileObj.ytInfo = info;
   return { file: fileObj, info, blob: fetchedBlob };
@@ -370,7 +469,6 @@ function formatDurationClock(sec) {
 }
 
 document.getElementById("sampleYtUrlBtn").addEventListener("click", () => {
-  // Full song: Rick Astley - Never Gonna Give You Up (3:34 full track)
   ytUrlInput.value = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
   document.getElementById("fetchYtBtn").click();
 });
@@ -378,7 +476,7 @@ document.getElementById("sampleYtUrlBtn").addEventListener("click", () => {
 document.getElementById("fetchYtBtn").addEventListener("click", async () => {
   const urlVal = ytUrlInput.value.trim();
   if (!urlVal) {
-    showToast("Paste link YouTube terlebih dahulu.");
+    showToast("Paste link YouTube atau ketik judul lagu terlebih dahulu.");
     return;
   }
 
@@ -407,16 +505,14 @@ document.getElementById("fetchYtBtn").addEventListener("click", async () => {
     document.getElementById("ytVideoAuthor").textContent = `${info.author} · Durasi Full: ${durClock} · ID: ${info.videoId}`;
     ytPreviewCard.classList.remove("hidden");
 
-    // Also update dropzone display to reflect the YouTube track
     document.getElementById("singleFileName").textContent = `[YouTube Full Audio] ${info.title}`;
     document.getElementById("singleFileMeta").textContent = `Durasi Penuh (${durClock}) · Nama File: ${safeBaseName}`;
     convCategory.value = "audio";
     convCategory.dispatchEvent(new Event("change"));
 
-    // Clear local file selection so converter uses the full YouTube stream
     singleSelectedFile = null;
 
-    // Immediately trigger full song extraction & preview so the player is ready right away
+    // Immediately trigger full song extraction & preview
     document.getElementById("startSingleConvertBtn").click();
   } catch (err) {
     showToast(err.message || "Gagal mengambil video YouTube.");
@@ -530,13 +626,19 @@ document.getElementById("startSingleConvertBtn").addEventListener("click", async
 
   const category = convCategory.value;
   const format = convFormat.value;
-  const sampleRate = Number(document.getElementById("convSampleRate").value) || 44100;
-  const channels = document.getElementById("convChannels").value;
+  const sampleRate = Number(document.getElementById("convSampleRate")?.value) || 44100;
+  const bitrate = document.getElementById("convBitrate")?.value || "128k";
+  const channels = document.getElementById("convChannels")?.value || "stereo";
   const isMono = channels === "mono";
   const pitch = Number(convPitch.value) || 1.0;
-  const normalize = document.getElementById("convNormalize").checked;
+  const trimStart = Math.max(0, Number(document.getElementById("convTrimStart")?.value) || 0);
+  const trimEnd = Math.max(0, Number(document.getElementById("convTrimEnd")?.value) || 0);
+  const fadeIn = Boolean(document.getElementById("convFadeIn")?.checked);
+  const normalize = Boolean(document.getElementById("convNormalize")?.checked);
 
-  // Check if user wants to convert a YouTube URL (full song)
+  document.getElementById("convDirectUploadResult")?.classList.add("hidden");
+
+  // Check if user wants to convert a YouTube URL or song title (full song)
   const ytUrlVal = ytUrlInput ? ytUrlInput.value.trim() : "";
   if (!singleSelectedFile && (currentYtInfo || ytUrlVal)) {
     badge.textContent = "EXTRACTING FULL SONG...";
@@ -545,11 +647,16 @@ document.getElementById("startSingleConvertBtn").addEventListener("click", async
 
     try {
       const targetUrl = ytUrlVal || (currentYtInfo && currentYtInfo.url);
+      const targetFmt = format === "ogg" || format === "mp3" ? format : "wav";
       const { file, info, blob } = await loadYouTubeAsAudioFile(targetUrl, {
-        format: format === "ogg" || format === "mp3" ? format : "wav",
+        format: targetFmt,
         sampleRate,
+        bitrate,
         channels: isMono ? "mono" : "stereo",
         speed: pitch,
+        trimStart,
+        trimEnd,
+        fadeIn,
         normalize
       });
 
@@ -561,8 +668,8 @@ document.getElementById("startSingleConvertBtn").addEventListener("click", async
       ytPreviewCard.classList.remove("hidden");
 
       const safeBase = slugifyTitle(info.title);
-      const outName = `${safeBase}.${format === "jpeg" ? "jpg" : format}`;
-      const specsText = `YouTube Full Track (${durClock}) → ${format.toUpperCase()} · ${(sampleRate / 1000).toFixed(1)} kHz · ${isMono ? "Mono" : "Stereo"} · ${pitch.toFixed(2)}x · ${formatBytes(blob.size)}`;
+      const outName = `${safeBase}.${targetFmt}`;
+      const specsText = `YouTube Full Track (${durClock}) → ${targetFmt.toUpperCase()} (${bitrate}) · ${(sampleRate / 1000).toFixed(1)} kHz · ${isMono ? "Mono" : "Stereo"} · ${pitch.toFixed(2)}x · ${formatBytes(blob.size)}`;
 
       const outUrl = URL.createObjectURL(blob);
       document.getElementById("convImagePreviewWrap").classList.add("hidden");
@@ -583,10 +690,13 @@ document.getElementById("startSingleConvertBtn").addEventListener("click", async
       badge.textContent = "COMPLETED (FULL SONG)";
 
       lastConvertedFileInfo = {
-        name: info.title,
+        name: safeBase,
+        displayTitle: info.title,
         fileName: outName,
         type: "Audio",
-        specs: specsText
+        specs: specsText,
+        blob,
+        file
       };
 
       const res = await fetch("/api/history", {
@@ -617,7 +727,6 @@ document.getElementById("startSingleConvertBtn").addEventListener("click", async
   }
 
   if (!singleSelectedFile) {
-    // Auto-create sample audio so the user never hits a dead end
     const wavBlob = createSynthesizedWavBlob(8.0, 44100);
     singleSelectedFile = new File([wavBlob], "sakura_sample_sfx.wav", { type: "audio/wav" });
     setSingleFile(singleSelectedFile);
@@ -628,7 +737,8 @@ document.getElementById("startSingleConvertBtn").addEventListener("click", async
   startBtn.disabled = true;
 
   const baseName = singleSelectedFile.name.replace(/\.[^/.]+$/, "");
-  const outName = `${baseName}.${format === "jpeg" ? "jpg" : format}`;
+  const outExt = format === "jpeg" ? "jpg" : format;
+  const outName = `${baseName}.${outExt}`;
 
   try {
     let outBlob;
@@ -647,15 +757,34 @@ document.getElementById("startSingleConvertBtn").addEventListener("click", async
       dlBtn.href = outUrl;
       dlBtn.download = outName;
     } else {
-      const arrayBuf = await singleSelectedFile.arrayBuffer();
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      const decoded = await audioCtx.decodeAudioData(arrayBuf);
-      const fullDurationClock = formatDurationClock(decoded.duration);
-      outBlob = audioBufferToWavBlob(decoded, sampleRate, isMono, normalize, pitch);
-      await audioCtx.close();
+      let fullDurationClock = "Full Track";
+      try {
+        const arrayBuf = await singleSelectedFile.arrayBuffer();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        const decoded = await audioCtx.decodeAudioData(arrayBuf);
+        fullDurationClock = formatDurationClock(decoded.duration);
+        if (format === "wav" && trimStart === 0 && trimEnd === 0 && !fadeIn) {
+          outBlob = audioBufferToWavBlob(decoded, sampleRate, isMono, normalize, pitch);
+        }
+        await audioCtx.close();
+      } catch {}
 
-      specsText = `Full Audio (${fullDurationClock}) → ${format.toUpperCase()} · ${(sampleRate / 1000).toFixed(1)} kHz · ${isMono ? "Mono" : "Stereo"} · ${pitch.toFixed(2)}x · ${formatBytes(outBlob.size)}`;
+      if (!outBlob) {
+        outBlob = await convertLocalAudioOnServer(singleSelectedFile, {
+          format,
+          sampleRate,
+          bitrate,
+          channels: isMono ? "mono" : "stereo",
+          speed: pitch,
+          trimStart,
+          trimEnd,
+          fadeIn,
+          normalize
+        });
+      }
+
+      specsText = `Full Audio (${fullDurationClock}) → ${format.toUpperCase()} (${bitrate}) · ${(sampleRate / 1000).toFixed(1)} kHz · ${isMono ? "Mono" : "Stereo"} · ${pitch.toFixed(2)}x · ${formatBytes(outBlob.size)}`;
       const outUrl = URL.createObjectURL(outBlob);
       document.getElementById("convImagePreviewWrap").classList.add("hidden");
       const audWrap = document.getElementById("convAudioPreviewWrap");
@@ -675,11 +804,17 @@ document.getElementById("startSingleConvertBtn").addEventListener("click", async
     document.getElementById("convResultBox").classList.remove("hidden");
     badge.textContent = "COMPLETED (FULL)";
 
+    const convertedFileObj = new File([outBlob], outName, {
+      type: outBlob.type || (category === "image" ? `image/${outExt}` : `audio/${outExt}`)
+    });
+
     lastConvertedFileInfo = {
       name: baseName,
       fileName: outName,
       type: category === "image" ? "Decal" : "Audio",
-      specs: specsText
+      specs: specsText,
+      blob: outBlob,
+      file: convertedFileObj
     };
 
     const res = await fetch("/api/history", {
@@ -714,20 +849,79 @@ document.getElementById("resetSingleConvertBtn").addEventListener("click", () =>
   if (ytUrlInput) ytUrlInput.value = "";
   if (ytPreviewCard) ytPreviewCard.classList.add("hidden");
   document.getElementById("singleFileName").textContent = "Atau klik / tarik file Audio & Gambar lokal ke sini";
-  document.getElementById("singleFileMeta").textContent = "Mendukung WAV, MP3, OGG, FLAC, PNG, JPG, WEBP (Durasi Full Tanpa Batas)";
+  document.getElementById("singleFileMeta").textContent = "Mendukung MP3, OGG, WAV, FLAC, M4A, PNG, JPG, WEBP (Maks 20MB)";
   document.getElementById("convResultEmpty").classList.remove("hidden");
   document.getElementById("convResultBox").classList.add("hidden");
+  document.getElementById("convDirectUploadResult")?.classList.add("hidden");
   document.getElementById("convStatusBadge").textContent = "READY";
 });
+
+// Direct 1-Click Upload to Roblox Cloud right from the Converter Panel
+const directUploadFromConvBtn = document.getElementById("directUploadFromConvBtn");
+if (directUploadFromConvBtn) {
+  directUploadFromConvBtn.addEventListener("click", async () => {
+    if (!lastConvertedFileInfo || !lastConvertedFileInfo.file) {
+      showToast("Konversi lagu atau file terlebih dahulu sebelum upload ke Roblox.");
+      return;
+    }
+    const prevText = directUploadFromConvBtn.textContent;
+    directUploadFromConvBtn.textContent = "Mengunggah ke Roblox Cloud...";
+    directUploadFromConvBtn.disabled = true;
+
+    try {
+      const buf = await lastConvertedFileInfo.file.arrayBuffer();
+      const fileBase64 = arrayBufferToBase64(buf);
+      const res = await fetch("/api/roblox/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: lastConvertedFileInfo.name,
+          type: lastConvertedFileInfo.type || "Audio",
+          creatorType: appState.settings.creatorType,
+          creatorId: appState.settings.creatorId,
+          description: `Uploaded via Sakurayama Converter (${lastConvertedFileInfo.specs})`,
+          fileBase64,
+          fileName: lastConvertedFileInfo.fileName,
+          mimeType: lastConvertedFileInfo.file.type || "audio/ogg"
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Gagal upload langsung ke Roblox.");
+        return;
+      }
+
+      appState.publishedAssets.unshift(data.asset);
+      if (data.historyItem) appState.history.unshift(data.historyItem);
+      if (data.apiUsage) appState.apiUsage = data.apiUsage;
+      renderAllViews();
+
+      const resBox = document.getElementById("convDirectUploadResult");
+      const resText = document.getElementById("convDirectUploadText");
+      if (resBox && resText) {
+        resBox.classList.remove("hidden");
+        resText.textContent = `rbxassetid://${data.asset.id} (${data.asset.status})`;
+      }
+      showToast(`Sukses masuk ke Inventori Roblox! rbxassetid://${data.asset.id}`);
+    } catch (err) {
+      showToast(err.message || "Gagal mengunggah ke Roblox.");
+    } finally {
+      directUploadFromConvBtn.textContent = prevText;
+      directUploadFromConvBtn.disabled = false;
+    }
+  });
+}
 
 document.getElementById("sendToPublishBtn").addEventListener("click", () => {
   if (lastConvertedFileInfo) {
     document.getElementById("pubName").value = lastConvertedFileInfo.name;
     document.getElementById("pubType").value = lastConvertedFileInfo.type;
     document.getElementById("pubDesc").value = `Hasil konversi Sakurayama Converter (${lastConvertedFileInfo.specs})`;
+    showToast(`File "${lastConvertedFileInfo.fileName}" (${formatBytes(lastConvertedFileInfo.blob?.size || 0)}) siap di-upload langsung ke Roblox!`);
+  } else {
+    showToast("Data aset diteruskan ke Roblox Publishing.");
   }
   navigate("Roblox Publishing");
-  showToast("Data aset diteruskan ke Roblox Publishing.");
 });
 
 // ==========================================
@@ -760,7 +954,7 @@ bulkFilesInput.addEventListener("change", e => {
 document.getElementById("addBulkYtBtn").addEventListener("click", async () => {
   const urlVal = (bulkYtUrlInput.value || "").trim();
   if (!urlVal) {
-    showToast("Masukkan URL YouTube terlebih dahulu.");
+    showToast("Masukkan URL YouTube atau judul lagu terlebih dahulu.");
     return;
   }
   const btn = document.getElementById("addBulkYtBtn");
@@ -838,6 +1032,8 @@ function renderBulkTable() {
       ? `<span class="good">● Selesai (Full)</span>`
       : item.status === "Processing"
       ? `<span class="pending">Memproses Full...</span>`
+      : item.status === "Error"
+      ? `<span style="color:#ff7b9c;">✕ Gagal</span>`
       : `<span class="muted-text">Menunggu</span>`;
 
     const sizeText = item.size > 0
@@ -914,13 +1110,29 @@ document.getElementById("runBulkConvertBtn").addEventListener("click", async () 
         const outBlob = await convertImageFile(item.file, format);
         item.size = outBlob.size;
         item.downloadUrl = URL.createObjectURL(outBlob);
-      } else if (item.file && item.file.type.startsWith("audio/")) {
-        const arrayBuf = await item.file.arrayBuffer();
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        const audioCtx = new AudioCtx();
-        const decoded = await audioCtx.decodeAudioData(arrayBuf);
-        const outBlob = audioBufferToWavBlob(decoded, sampleRate, false, true, 1.0);
-        await audioCtx.close();
+      } else if (item.file) {
+        const outAudioFmt = format === "ogg" || format === "mp3" ? format : "wav";
+        item.outName = `${prefix}${base}.${outAudioFmt}`;
+        let outBlob = null;
+        if (outAudioFmt === "wav") {
+          try {
+            const arrayBuf = await item.file.arrayBuffer();
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            const audioCtx = new AudioCtx();
+            const decoded = await audioCtx.decodeAudioData(arrayBuf);
+            outBlob = audioBufferToWavBlob(decoded, sampleRate, false, true, 1.0);
+            await audioCtx.close();
+          } catch {}
+        }
+        if (!outBlob) {
+          outBlob = await convertLocalAudioOnServer(item.file, {
+            format: outAudioFmt,
+            sampleRate,
+            channels: "stereo",
+            speed: 1.0,
+            normalize: true
+          });
+        }
         item.size = outBlob.size;
         item.downloadUrl = URL.createObjectURL(outBlob);
       }
@@ -1527,16 +1739,26 @@ function renderPublishedTable() {
   }
 
   // Render top 100 in DOM table for smooth scrolling, full list available via Copy/CSV
-  tbody.innerHTML = appState.publishedAssets.slice(0, 100).map(asset => `
+  tbody.innerHTML = appState.publishedAssets.slice(0, 100).map(asset => {
+    const modText = asset.moderationState === "MODERATION_STATE_REVIEWING"
+      ? "Reviewing"
+      : asset.moderationState === "MODERATION_STATE_REJECTED"
+      ? "Rejected"
+      : "Approved";
+    return `
     <tr>
       <td class="mono-text gold-text">rbxassetid://${asset.id}</td>
-      <td><strong>${asset.name}</strong><br><small class="muted-text">${asset.type} · ${asset.status || "Published"}</small></td>
+      <td><strong>${asset.name}</strong><br><small class="muted-text">${asset.type} · ${asset.status || "Published"} · <span class="good">● ${modText}</span></small></td>
       <td class="mono-text">${asset.creatorType} #${asset.creatorId}</td>
       <td style="text-align:right;">
-        <button type="button" class="btn-secondary compact-btn manage-perm-btn" data-id="${asset.id}">Permission →</button>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <a href="/api/roblox/download/${asset.id}" download class="btn-ghost compact-btn">⬇ Unduh</a>
+          <button type="button" class="btn-secondary compact-btn manage-perm-btn" data-id="${asset.id}">Moderasi &amp; Izin →</button>
+        </div>
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   tbody.querySelectorAll(".manage-perm-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1614,9 +1836,9 @@ document.getElementById("publishForm").addEventListener("submit", async e => {
     return;
   }
 
-  // Single Publish (includes actual file bytes for Direct Roblox Open Cloud / Cookie Upload)
+  // Single Publish (includes actual file bytes from pubFile OR lastConvertedFileInfo from Converter)
   let finalName = pubName.value.trim();
-  const uploadedFile = pubFile.files?.[0] || null;
+  const uploadedFile = pubFile.files?.[0] || (lastConvertedFileInfo && lastConvertedFileInfo.file) || null;
   if (!finalName && uploadedFile) {
     finalName = stripFileExt(uploadedFile.name);
     pubName.value = finalName;
@@ -1630,15 +1852,10 @@ document.getElementById("publishForm").addEventListener("submit", async e => {
   let fileName = null;
   let mimeType = null;
 
-  if (uploadedFile && uploadedFile.size <= 20 * 1024 * 1024) {
+  if (uploadedFile && uploadedFile.size <= 25 * 1024 * 1024) {
     try {
       const buf = await uploadedFile.arrayBuffer();
-      let binary = "";
-      const bytes = new Uint8Array(buf);
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      fileBase64 = btoa(binary);
+      fileBase64 = arrayBufferToBase64(buf);
       fileName = uploadedFile.name;
       mimeType = uploadedFile.type || "application/octet-stream";
     } catch {}
@@ -1710,7 +1927,7 @@ document.getElementById("exportPubCsvBtn").addEventListener("click", () => {
 });
 
 // ==========================================
-// 7. ROBLOX ASSET PERMISSION
+// 7. ROBLOX ASSET PERMISSION & MODERATION
 // ==========================================
 let currentInspectedAssetId = "98410293841";
 
@@ -1721,23 +1938,32 @@ async function inspectPermission(assetId) {
     return;
   }
   currentInspectedAssetId = cleanId;
-  const res = await fetch(`/api/roblox/permissions/${cleanId}`);
+  const [res, modRes] = await Promise.all([
+    fetch(`/api/roblox/permissions/${cleanId}`),
+    fetch(`/api/roblox/moderation/${cleanId}`).catch(() => null)
+  ]);
   const data = await res.json();
   if (!res.ok) {
     showToast(data.error || "Gagal memuat permission.");
     return;
   }
+  let modState = "MODERATION_STATE_APPROVED";
+  if (modRes && modRes.ok) {
+    const modData = await modRes.json().catch(() => ({}));
+    if (modData.moderationState) modState = modData.moderationState;
+  }
   if (data.apiUsage) appState.apiUsage = data.apiUsage;
-  renderPermissionView(data.permission);
+  renderPermissionView(data.permission, modState);
   renderHomeStats();
 }
 
-function renderPermissionView(perm) {
+function renderPermissionView(perm, modState = "MODERATION_STATE_APPROVED") {
   if (!perm) return;
+  const cleanMod = modState.replace("MODERATION_STATE_", "");
   document.getElementById("permDetailId").textContent = perm.assetId;
   document.getElementById("permDetailName").textContent = perm.name;
   document.getElementById("permDetailOwner").textContent = perm.owner;
-  document.getElementById("permDetailVis").textContent = `${perm.visibility} (Whitelisted Places)`;
+  document.getElementById("permDetailVis").textContent = `● ${cleanMod} · ${perm.visibility} (Whitelisted Places)`;
 
   const places = perm.authorizedPlaces || [];
   document.getElementById("permPlacesCount").textContent = `● ${places.length} Places`;

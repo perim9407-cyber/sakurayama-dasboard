@@ -151,27 +151,38 @@
           <div class="workspace-grid two-col">
             <div class="panel">
               <div class="panel-heading">
-                <div><h2>Media Converter</h2><p>Konversi dari URL YouTube atau file lokal untuk kebutuhan Roblox Studio &amp; project kreatif.</p></div>
+                <div><h2>Converter &amp; Downloader Panel</h2><p>Unduh full lagu dari YouTube / Roblox Asset ID atau konversi file lokal (OGG / MP3 / WAV) siap upload ke Roblox.</p></div>
                 <span class="panel-symbol">♫</span>
               </div>
 
-              <!-- YouTube Direct URL Box -->
+              <!-- YouTube Direct URL / Song Search Box -->
               <div class="yt-box">
                 <div class="yt-box-label">
-                  <span>▶ KONVERSI LANGSUNG DARI URL YOUTUBE</span>
-                  <button type="button" class="btn-ghost compact-btn" id="sampleYtUrlBtn">Isi Contoh URL</button>
+                  <span>▶ 1. YOUTUBE / SONG DOWNLOADER &amp; CONVERTER</span>
+                  <button type="button" class="btn-ghost compact-btn" id="sampleYtUrlBtn">Isi Contoh Lagu</button>
                 </div>
                 <div class="btn-row" style="flex-wrap:nowrap;">
-                  <input type="url" id="ytUrlInput" class="input-control" placeholder="Paste link YouTube (https://www.youtube.com/watch?v=... atau youtu.be/...)">
-                  <button type="button" class="btn-primary" id="fetchYtBtn">Ambil &amp; Muat</button>
+                  <input type="text" id="ytUrlInput" class="input-control" placeholder="Paste link YouTube (https://youtu.be/...) atau ketik judul lagu...">
+                  <button type="button" class="btn-primary" id="fetchYtBtn">Ambil &amp; Konversi</button>
                 </div>
                 <div id="ytPreviewCard" class="yt-preview hidden">
                   <img id="ytThumbImg" alt="YouTube Thumbnail" referrerPolicy="no-referrer">
                   <div class="yt-preview-info">
                     <strong id="ytVideoTitle">Judul Video YouTube</strong>
                     <small id="ytVideoAuthor">Channel · Durasi</small>
-                    <span class="good" id="ytReadyStatus">● Siap dikonversi ke WAV / OGG / MP3</span>
+                    <span class="good" id="ytReadyStatus">● Siap dikonversi ke OGG / MP3 / WAV</span>
                   </div>
+                </div>
+              </div>
+
+              <!-- Roblox Asset ID Downloader Box -->
+              <div class="yt-box" style="margin-top:12px;">
+                <div class="yt-box-label">
+                  <span>▶ 2. DOWNLOAD ASET ROBLOX DARI ASSET ID (AUDIO / ANIMATION / DECAL)</span>
+                </div>
+                <div class="btn-row" style="flex-wrap:nowrap;">
+                  <input type="text" id="rbxDownloadIdInput" class="input-control" placeholder="Masukkan Roblox Asset ID (contoh: rbxassetid://14892039104)...">
+                  <button type="button" class="btn-secondary" id="rbxDownloadBtn">Download Asset</button>
                 </div>
               </div>
 
@@ -179,7 +190,7 @@
                 <input type="file" id="singleFileInput" accept="audio/*,image/*" hidden>
                 <div class="dropzone-icon">↑</div>
                 <strong id="singleFileName">Atau klik / tarik file Audio &amp; Gambar lokal ke sini</strong>
-                <p id="singleFileMeta">Mendukung WAV, MP3, OGG, FLAC, PNG, JPG, WEBP (Maks 25MB)</p>
+                <p id="singleFileMeta">Mendukung MP3, OGG, WAV, FLAC, M4A, PNG, JPG, WEBP (Maks 20MB)</p>
                 <div class="btn-row" style="justify-content:center;margin-top:12px;">
                   <button type="button" class="btn-secondary" id="selectSingleFileBtn">Pilih File Lokal</button>
                   <button type="button" class="btn-ghost" id="loadSampleAudioBtn">Gunakan Sample Audio</button>
@@ -190,16 +201,16 @@
                 <div class="form-group">
                   <label for="convCategory">Kategori Media</label>
                   <select id="convCategory" class="input-control">
-                    <option value="audio">Audio (WAV / OGG / MP3)</option>
+                    <option value="audio">Audio (OGG / MP3 / WAV)</option>
                     <option value="image">Image / Decal (PNG / WEBP / JPG)</option>
                   </select>
                 </div>
                 <div class="form-group">
                   <label for="convFormat">Format Output</label>
                   <select id="convFormat" class="input-control">
-                    <option value="wav">WAV (Lossless PCM 16-bit)</option>
-                    <option value="ogg">OGG (Roblox Audio Optimized)</option>
+                    <option value="ogg" selected>OGG (Roblox Audio Optimized - Hemat Ukuran)</option>
                     <option value="mp3">MP3 (Standard Audio)</option>
+                    <option value="wav">WAV (Lossless PCM 16-bit)</option>
                   </select>
                 </div>
                 <div class="form-group" id="convSampleRateGroup">
@@ -208,6 +219,14 @@
                     <option value="44100">44,100 Hz (Standar Studio)</option>
                     <option value="48000">48,000 Hz (High Definition)</option>
                     <option value="22050">22,050 Hz (Hemat Ukuran Roblox)</option>
+                  </select>
+                </div>
+                <div class="form-group" id="convBitrateGroup">
+                  <label for="convBitrate">Bitrate Audio</label>
+                  <select id="convBitrate" class="input-control">
+                    <option value="128k" selected>128 kbps (Rekomendasi Roblox)</option>
+                    <option value="192k">192 kbps (High Quality)</option>
+                    <option value="96k">96 kbps (Kompresi Ukuran Kecil)</option>
                   </select>
                 </div>
                 <div class="form-group" id="convChannelsGroup">
@@ -221,11 +240,25 @@
                   <label for="convPitch">Kecepatan / Pitch (<span id="convPitchVal">1.00x</span>)</label>
                   <input type="range" id="convPitch" min="0.5" max="1.5" step="0.05" value="1.0" class="range-control">
                 </div>
-                <div class="form-group" id="convNormalizeGroup">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="convNormalize" checked>
-                    <span>Normalisasi Volume &amp; Anti-Clipping (Roblox Safe)</span>
-                  </label>
+                <div class="form-group" id="convTrimStartGroup">
+                  <label for="convTrimStart">Trim Mulai (Detik, 0 = Awal)</label>
+                  <input type="number" id="convTrimStart" min="0" step="1" value="0" class="input-control">
+                </div>
+                <div class="form-group" id="convTrimEndGroup">
+                  <label for="convTrimEnd">Trim Akhir (Detik, 0 = Full Lagu)</label>
+                  <input type="number" id="convTrimEnd" min="0" step="1" value="0" class="input-control">
+                </div>
+                <div class="form-group full-width" id="convNormalizeGroup">
+                  <div class="btn-row" style="gap:18px;">
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="convNormalize" checked>
+                      <span>Normalisasi Volume &amp; Anti-Clipping (Roblox Safe)</span>
+                    </label>
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="convFadeIn">
+                      <span>Smooth Fade-In (1.5s)</span>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -237,22 +270,22 @@
 
             <div class="panel">
               <div class="panel-heading">
-                <div><h2>Hasil &amp; Preview</h2><p>Pratinjau output dan unduh file hasil konversi.</p></div>
+                <div><h2>Hasil, Preview &amp; Direct Upload</h2><p>Pratinjau full lagu, unduh file, atau langsung upload ke Roblox.</p></div>
                 <span class="subtle-label" id="convStatusBadge">READY</span>
               </div>
 
               <div id="convResultEmpty" class="empty-box">
-                <p>Belum ada media yang dikonversi. Paste <strong>URL YouTube</strong> atau pilih file lokal, lalu tekan <strong>Konversi Sekarang</strong>.</p>
+                <p>Belum ada media yang dikonversi. Paste <strong>URL YouTube / Judul Lagu</strong> atau pilih file lokal, lalu tekan <strong>Konversi Sekarang</strong>.</p>
               </div>
 
               <div id="convResultBox" class="result-card hidden">
                 <div class="result-meta">
                   <div>
-                    <span class="stat-label">OUTPUT FILE</span>
-                    <strong id="convOutName">sakura_bgm_converted.wav</strong>
-                    <p id="convOutSpecs">WAV · 44.1 kHz · Stereo · 1.24 MB</p>
+                    <span class="stat-label">OUTPUT FILE (SIAP PAKAI)</span>
+                    <strong id="convOutName">sakura_bgm_converted.ogg</strong>
+                    <p id="convOutSpecs">OGG · 44.1 kHz · Stereo · 3.80 MB</p>
                   </div>
-                  <span class="good">● Selesai</span>
+                  <span class="good" id="convResultModBadge">● Selesai &amp; Aman</span>
                 </div>
 
                 <div id="convAudioPreviewWrap" class="preview-media">
@@ -264,8 +297,14 @@
                 </div>
 
                 <div class="btn-row" style="margin-top:16px;">
-                  <a id="convDownloadBtn" class="btn-primary" download="converted_file.wav">Download Hasil</a>
-                  <button type="button" class="btn-secondary" id="sendToPublishBtn">Kirim ke Roblox Publishing →</button>
+                  <a id="convDownloadBtn" class="btn-primary" download="converted_file.ogg">⬇ Download File</a>
+                  <button type="button" class="btn-primary" id="directUploadFromConvBtn">⌁ Upload Langsung ke Roblox</button>
+                  <button type="button" class="btn-secondary" id="sendToPublishBtn">Buka di Publishing →</button>
+                </div>
+
+                <div id="convDirectUploadResult" class="kv-item hidden" style="margin-top:12px;">
+                  <span>STATUS UPLOAD ROBLOX CLOUD</span>
+                  <strong id="convDirectUploadText" class="mono-text gold-text">rbxassetid://-</strong>
                 </div>
               </div>
             </div>
@@ -289,10 +328,10 @@
 
             <div class="yt-box" style="margin-bottom:16px;">
               <div class="yt-box-label">
-                <span>▶ TAMBAH URL YOUTUBE KE ANTREAN BULK</span>
+                <span>▶ TAMBAH URL YOUTUBE ATAU JUDUL LAGU KE ANTREAN BULK</span>
               </div>
               <div class="btn-row" style="flex-wrap:nowrap;">
-                <input type="url" id="bulkYtUrlInput" class="input-control" placeholder="Paste link YouTube untuk dimasukkan ke antrean Bulk Convert...">
+                <input type="text" id="bulkYtUrlInput" class="input-control" placeholder="Paste link YouTube atau ketik judul lagu untuk dimasukkan ke antrean Bulk Convert...">
                 <button type="button" class="btn-secondary" id="addBulkYtBtn">+ Masuk Antrean</button>
               </div>
             </div>
@@ -301,8 +340,9 @@
               <div class="form-group">
                 <label for="bulkTargetFormat">Target Format Semua File</label>
                 <select id="bulkTargetFormat" class="input-control">
+                  <option value="ogg" selected>OGG (Roblox Optimized Audio)</option>
+                  <option value="mp3">MP3 (Standard Audio)</option>
                   <option value="wav">WAV (Audio Lossless)</option>
-                  <option value="ogg">OGG (Roblox Optimized Audio)</option>
                   <option value="png">PNG (Roblox Decal / UI)</option>
                   <option value="webp">WEBP (Kompresi Cepat)</option>
                 </select>
@@ -678,7 +718,7 @@
 
             <div class="panel">
               <div class="panel-heading">
-                <div><h2>Daftar Aset Terpublikasi</h2><p>Semua aset yang baru di-publish beserta ID dan tombol export.</p></div>
+                <div><h2>Daftar Aset &amp; Moderation Status</h2><p>Pantau ID aset, status moderasi Roblox, unduh file, atau kelola izin Place.</p></div>
                 <div class="btn-row">
                   <span class="subtle-label" id="publishedCountBadge">2 ASSETS</span>
                   <button type="button" class="btn-ghost compact-btn" id="copyAllPubIdsBtn">Copy Semua ID</button>
@@ -691,7 +731,7 @@
                   <thead>
                     <tr>
                       <th>Asset ID</th>
-                      <th>Nama Aset (Sesuai File) &amp; Tipe</th>
+                      <th>Nama Aset &amp; Moderation</th>
                       <th>Owner</th>
                       <th style="text-align:right;">Aksi</th>
                     </tr>
@@ -709,15 +749,15 @@
             <div class="panel">
               <div class="panel-heading">
                 <div>
-                  <h2>Roblox Asset Permission Manager</h2>
-                  <p>Periksa kepemilikan aset dan berikan izin akses ke Place ID / Universe ID game kamu.</p>
+                  <h2>Roblox Asset Permission &amp; Moderation Inspector</h2>
+                  <p>Periksa kepemilikan, status moderasi Roblox, dan berikan izin akses ke Place ID / Universe ID game kamu.</p>
                 </div>
                 <span class="panel-symbol">⬡</span>
               </div>
 
               <form id="permInspectForm" class="btn-row" style="margin-bottom:18px;">
                 <input type="text" id="permAssetIdInput" class="input-control" value="98410293841" placeholder="Masukkan Asset ID (contoh: 98410293841)" style="flex:1;">
-                <button type="submit" class="btn-secondary">Cek Permission</button>
+                <button type="submit" class="btn-secondary">Cek Permission &amp; Moderasi</button>
               </form>
 
               <div class="kv-grid" id="permAssetDetails">
@@ -734,8 +774,8 @@
                   <strong id="permDetailOwner">Sakurayama Studio (Group #12094812)</strong>
                 </div>
                 <div class="kv-item">
-                  <span>Status Visibilitas</span>
-                  <strong id="permDetailVis" class="gold-text">Private (Whitelisted Places Only)</strong>
+                  <span>Status Moderasi &amp; Visibilitas</span>
+                  <strong id="permDetailVis" class="gold-text">Approved · Private</strong>
                 </div>
               </div>
 
@@ -871,13 +911,13 @@
           </div>
         </div>
 
-        <!-- VIEW: API LIMITS -->
+        <!-- VIEW: API LIMITS & ACCOUNT QUOTA -->
         <div class="page-view" data-view="API Limits">
           <div class="panel">
             <div class="panel-heading">
               <div>
-                <h2>API Limits &amp; Kuota Penggunaan</h2>
-                <p>Pantau pemakaian kuota harian sesuai paket aktif workspace kamu.</p>
+                <h2>Account Quota &amp; API Limits</h2>
+                <p>Pantau pemakaian kuota harian workspace serta estimasi kuota bulanan Roblox Audio Upload.</p>
               </div>
               <div class="btn-row">
                 <span class="creator" id="limitsPlanBadge">Paket: Creator+</span>
@@ -888,11 +928,11 @@
             <div class="limits-grid">
               <div class="limit-card">
                 <div class="limit-head">
-                  <strong>Media Converter Engine</strong>
+                  <strong>Media Converter &amp; Downloader</strong>
                   <span id="limConvText" class="mono-text">18 / 500</span>
                 </div>
                 <div class="progress-track"><div class="progress-fill" id="limConvBar" style="width:4%;"></div></div>
-                <small>Konversi file tunggal audio &amp; gambar</small>
+                <small>Konversi file tunggal audio &amp; unduhan YouTube/Roblox</small>
               </div>
 
               <div class="limit-card">
@@ -901,7 +941,7 @@
                   <span id="limBulkText" class="mono-text">12 / 250</span>
                 </div>
                 <div class="progress-track"><div class="progress-fill" id="limBulkBar" style="width:5%;"></div></div>
-                <small>Pemrosesan batch multi-file</small>
+                <small>Pemrosesan batch multi-file &amp; playlist</small>
               </div>
 
               <div class="limit-card">
@@ -915,11 +955,11 @@
 
               <div class="limit-card">
                 <div class="limit-head">
-                  <strong>Roblox Cloud &amp; Spoofer API</strong>
+                  <strong>Roblox Open Cloud &amp; Audio Upload Quota</strong>
                   <span id="limRbxText" class="mono-text">24 / 1000</span>
                 </div>
                 <div class="progress-track"><div class="progress-fill" id="limRbxBar" style="width:3%;"></div></div>
-                <small>Operasi spoofing, publishing, dan cek permission</small>
+                <small>Operasi direct upload, spoofing, publishing, dan cek moderasi</small>
               </div>
             </div>
           </div>

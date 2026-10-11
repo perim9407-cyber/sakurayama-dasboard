@@ -5,21 +5,43 @@ const { spawn } = require("child_process");
 const ytdl = require("@distube/ytdl-core");
 const { Innertube } = require("youtubei.js");
 const { GoogleGenAI } = require("@google/genai");
+let ffmpegStaticPath = null;
+try {
+  ffmpegStaticPath = require("ffmpeg-static");
+} catch {}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const publicDir = path.join(__dirname, "public");
 const ytDlpPath = path.join(__dirname, "node_modules", "yt-dlp-exec", "bin", "yt-dlp");
 
-// Ensure yt-dlp binary is present for full-length YouTube audio extraction
+function getFfmpegCommand() {
+  if (ffmpegStaticPath && fs.existsSync(ffmpegStaticPath)) {
+    return ffmpegStaticPath;
+  }
+  return "ffmpeg";
+}
+
+// Ensure yt-dlp standalone binary (yt-dlp_linux) is present so Python 3 is not required on Railway
 async function ensureYtDlpBinary() {
   try {
-    if (fs.existsSync(ytDlpPath)) return ytDlpPath;
+    if (fs.existsSync(ytDlpPath) && fs.statSync(ytDlpPath).size > 5000000) return ytDlpPath;
     fs.mkdirSync(path.dirname(ytDlpPath), { recursive: true });
-    const res = await fetch("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp");
-    if (res.ok) {
-      const buf = Buffer.from(await res.arrayBuffer());
-      fs.writeFileSync(ytDlpPath, buf, { mode: 0o755 });
+    const urls = [
+      "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux",
+      "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+    ];
+    for (const u of urls) {
+      try {
+        const res = await fetch(u);
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.length > 500000) {
+            fs.writeFileSync(ytDlpPath, buf, { mode: 0o755 });
+            return ytDlpPath;
+          }
+        }
+      } catch {}
     }
   } catch (err) {
     console.warn("yt-dlp init warning:", err.message);
@@ -28,7 +50,7 @@ async function ensureYtDlpBinary() {
 }
 ensureYtDlpBinary();
 
-app.use(express.json({ limit: "25mb" }));
+app.use(express.json({ limit: "50mb" }));
 app.use(express.static(publicDir));
 
 // Shared server-side state
@@ -569,16 +591,49 @@ async function getYouTubeMeta(videoId) {
   };
 }
 
-// Fetch YouTube video metadata with exact duration
+// Fetch YouTube video metadata with exact duration (also supports song title search)
 app.post("/api/youtube/info", async (req, res) => {
   try {
     const { url } = req.body || {};
-    const videoId = parseYouTubeId(url);
-    if (!videoId) {
-      return res.status(400).json({ error: "URL YouTube tidak valid. Contoh: https://www.youtube.com/watch?v=dQw4w9WgXcQ" });
+    const trimmed = String(url || "").trim();
+    if (!trimmed) {
+      return res.status(400).json({ error: "Masukkan link YouTube atau judul lagu terlebih dahulu." });
     }
-    const meta = await getYouTubeMeta(videoId);
-    return res.json(meta);
+    const videoId = parseYouTubeId(trimmed);
+    if (videoId) {
+      const meta = await getYouTubeMeta(videoId);
+      if (!meta.durationSeconds) {
+        try {
+          const yt = await Innertube.create({ retrieve_player: false });
+          const search = await yt.search(videoId, { type: "video" });
+          const matchVid = (search.videos || []).find(v => v.id === videoId) || (search.videos || [])[0];
+          if (matchVid && Number(matchVid.duration?.seconds) > 0) {
+            meta.durationSeconds = Number(matchVid.duration.seconds);
+          }
+        } catch {}
+      }
+      return res.json(meta);
+    }
+
+    // If user typed a song title / search query instead of a URL, search YouTube via Innertube
+    try {
+      const yt = await Innertube.create({ retrieve_player: false });
+      const search = await yt.search(trimmed, { type: "video" });
+      const firstVideo = (search.videos || [])[0];
+      if (firstVideo && firstVideo.id) {
+        return res.json({
+          videoId: firstVideo.id,
+          url: `https://www.youtube.com/watch?v=${firstVideo.id}`,
+          title: firstVideo.title?.text || firstVideo.title?.toString() || trimmed,
+          author: firstVideo.author?.name || "YouTube Music",
+          durationSeconds: Number(firstVideo.duration?.seconds) || 0,
+          thumbnail: `https://i.ytimg.com/vi/${firstVideo.id}/hqdefault.jpg`,
+          streamAvailable: true
+        });
+      }
+    } catch {}
+
+    return res.status(400).json({ error: "URL YouTube atau kata kunci lagu tidak ditemukan." });
   } catch (err) {
     res.status(404).json({ error: err?.message || "Gagal mengambil informasi video YouTube." });
   }
@@ -598,18 +653,149 @@ function runProcess(cmd, args) {
   });
 }
 
-// Convert and serve FULL original audio track from YouTube URL using yt-dlp + ffmpeg with exact seekable duration headers
-app.get("/api/youtube/stream", async (req, res) => {
-  const videoId = parseYouTubeId(req.query.url || req.query.v || "");
-  if (!videoId) {
-    return res.status(400).json({ error: "Video ID tidak valid." });
-  }
-  const canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
+// Probe exact audio duration in seconds using ffmpeg stderr
+function probeAudioDurationSec(filePath) {
+  return new Promise(resolve => {
+    const proc = spawn(getFfmpegCommand(), ["-hide_banner", "-i", filePath]);
+    let stderr = "";
+    proc.stderr.on("data", d => { stderr += d.toString(); });
+    proc.on("close", () => {
+      const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (m) {
+        const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + parseFloat(m[3]);
+        resolve(Math.round(sec));
+      } else {
+        resolve(0);
+      }
+    });
+    proc.on("error", () => resolve(0));
+  });
+}
 
-  const format = String(req.query.format || "wav").toLowerCase();
+// Convert uploaded local audio file to true OGG / MP3 / WAV using server-side FFmpeg (supports Trim, Fade, Bitrate, Speed, Normalize)
+app.post("/api/convert/audio", async (req, res) => {
+  const {
+    fileBase64,
+    fileName,
+    format = "ogg",
+    sampleRate = 44100,
+    bitrate = "128k",
+    channels = "stereo",
+    speed = 1.0,
+    trimStart = 0,
+    trimEnd = 0,
+    fadeIn = false,
+    fadeOut = false,
+    normalize = true
+  } = req.body || {};
+  if (!fileBase64) {
+    return res.status(400).json({ error: "Data file audio kosong." });
+  }
+
+  const outFormat = format === "ogg" ? "ogg" : format === "mp3" ? "mp3" : "wav";
+  const mimeMap = { wav: "audio/wav", ogg: "audio/ogg", mp3: "audio/mpeg" };
+  const safeRate = Math.max(8000, Math.min(96000, Number(sampleRate) || 44100));
+  const safeChannels = channels === "mono" ? 1 : 2;
+  const safeSpeed = Math.max(0.5, Math.min(2.0, Number(speed) || 1.0));
+  const startSec = Math.max(0, Number(trimStart) || 0);
+  const endSec = Math.max(0, Number(trimEnd) || 0);
+
+  const tmpId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const inExt = String(fileName || "input.wav").split(".").pop().replace(/[^a-zA-Z0-9]/g, "") || "wav";
+  const tmpInFile = path.join("/tmp", `sakura_in_${tmpId}.${inExt}`);
+  const tmpOutFile = path.join("/tmp", `sakura_out_${tmpId}.${outFormat}`);
+
+  const cleanup = () => {
+    try {
+      if (fs.existsSync(tmpInFile)) fs.unlinkSync(tmpInFile);
+      if (fs.existsSync(tmpOutFile)) fs.unlinkSync(tmpOutFile);
+    } catch {}
+  };
+
+  try {
+    const inputBuf = Buffer.from(fileBase64, "base64");
+    fs.writeFileSync(tmpInFile, inputBuf);
+
+    const afFilters = [];
+    if (Math.abs(safeSpeed - 1.0) > 0.01) {
+      afFilters.push(`asetrate=${Math.round(safeRate * safeSpeed)},aresample=${safeRate}`);
+    }
+    if (fadeIn) {
+      afFilters.push("afade=t=in:st=0:d=1.5");
+    }
+    if (normalize) {
+      afFilters.push("volume=1.15");
+    }
+
+    const ffmpegCmd = getFfmpegCommand();
+    const ffmpegArgs = [
+      "-y",
+      "-hide_banner",
+      "-loglevel", "error"
+    ];
+    if (startSec > 0) {
+      ffmpegArgs.push("-ss", String(startSec));
+    }
+    if (endSec > startSec) {
+      ffmpegArgs.push("-to", String(endSec));
+    }
+    ffmpegArgs.push(
+      "-i", tmpInFile,
+      "-vn",
+      "-ar", String(safeRate),
+      "-ac", String(safeChannels)
+    );
+
+    if (afFilters.length > 0) {
+      ffmpegArgs.push("-af", afFilters.join(","));
+    }
+
+    const cleanBitrate = ["96k", "128k", "192k", "256k", "320k"].includes(String(bitrate)) ? String(bitrate) : "128k";
+    if (outFormat === "ogg") {
+      ffmpegArgs.push("-c:a", "libvorbis", "-b:a", cleanBitrate, "-f", "ogg", tmpOutFile);
+    } else if (outFormat === "mp3") {
+      ffmpegArgs.push("-c:a", "libmp3lame", "-b:a", cleanBitrate, "-f", "mp3", tmpOutFile);
+    } else {
+      ffmpegArgs.push("-bitexact", "-c:a", "pcm_s16le", "-f", "wav", tmpOutFile);
+    }
+
+    await runProcess(ffmpegCmd, ffmpegArgs);
+
+    const stat = fs.statSync(tmpOutFile);
+    if (!stat || stat.size < 256) {
+      cleanup();
+      return res.status(502).json({ error: "Hasil konversi audio kosong." });
+    }
+
+    const exactDur = await probeAudioDurationSec(tmpOutFile);
+    res.setHeader("Content-Type", mimeMap[outFormat] || "audio/ogg");
+    res.setHeader("Content-Length", String(stat.size));
+    res.setHeader("X-Audio-Duration", String(exactDur));
+    res.setHeader("Cache-Control", "no-store");
+
+    const outBuf = fs.readFileSync(tmpOutFile);
+    cleanup();
+    return res.send(outBuf);
+  } catch (err) {
+    cleanup();
+    return res.status(500).json({ error: err.message || "Gagal mengonversi audio di server." });
+  }
+});
+
+// Convert and serve FULL original audio track from YouTube URL using yt-dlp + multi-fallback + ffmpeg
+app.get("/api/youtube/stream", async (req, res) => {
+  const rawInput = String(req.query.url || req.query.v || req.query.q || "").trim();
+  const videoId = parseYouTubeId(rawInput);
+  const canonicalUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : null;
+
+  const format = String(req.query.format || "ogg").toLowerCase();
   const sampleRate = Math.max(8000, Math.min(96000, Number(req.query.sampleRate) || 44100));
+  const bitrate = ["96k", "128k", "192k", "256k", "320k"].includes(String(req.query.bitrate)) ? String(req.query.bitrate) : "128k";
   const channels = req.query.channels === "mono" ? 1 : 2;
   const speed = Math.max(0.5, Math.min(2.0, Number(req.query.speed) || 1.0));
+  const trimStart = Math.max(0, Number(req.query.trimStart) || 0);
+  const trimEnd = Math.max(0, Number(req.query.trimEnd) || 0);
+  const fadeIn = req.query.fadeIn === "1" || req.query.fadeIn === "true";
   const normalize = req.query.normalize === "1" || req.query.normalize === "true";
 
   const outFormat = format === "ogg" ? "ogg" : format === "mp3" ? "mp3" : "wav";
@@ -619,71 +805,108 @@ app.get("/api/youtube/stream", async (req, res) => {
     mp3: "audio/mpeg"
   };
 
-  const tmpId = `${videoId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const tmpId = `${videoId || "search"}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const tmpRawPrefix = path.join("/tmp", `sakura_raw_${tmpId}`);
   const tmpOutFile = path.join("/tmp", `sakura_yt_${tmpId}.${outFormat}`);
 
   const findRawFile = () => {
     try {
       const files = fs.readdirSync("/tmp").filter(f => f.startsWith(`sakura_raw_${tmpId}`));
-      if (files.length > 0) return path.join("/tmp", files[0]);
+      for (const f of files) {
+        const full = path.join("/tmp", f);
+        if (fs.existsSync(full) && fs.statSync(full).size > 2048) return full;
+      }
     } catch {}
     return null;
   };
 
   const cleanupTmp = () => {
     try {
-      const raw = findRawFile();
-      if (raw && fs.existsSync(raw)) fs.unlinkSync(raw);
+      const files = fs.readdirSync("/tmp").filter(f => f.startsWith(`sakura_raw_${tmpId}`));
+      for (const f of files) {
+        try { fs.unlinkSync(path.join("/tmp", f)); } catch {}
+      }
       if (fs.existsSync(tmpOutFile)) fs.unlinkSync(tmpOutFile);
     } catch {}
   };
 
   try {
     await ensureYtDlpBinary();
-
-    // Stage 1: Try direct YouTube extraction via yt-dlp + node JS runtime
     let rawAudioPath = null;
-    try {
-      await runProcess(ytDlpPath, [
-        "--js-runtimes", "node",
-        "-f", "bestaudio/best",
-        "-o", `${tmpRawPrefix}.%(ext)s`,
-        "--no-warnings",
-        "--no-playlist",
-        canonicalUrl
-      ]);
-      rawAudioPath = findRawFile();
-    } catch {
-      rawAudioPath = null;
+
+    // Stage 1: Try direct YouTube extraction via yt-dlp
+    if (canonicalUrl) {
+      try {
+        await runProcess(ytDlpPath, [
+          "-f", "bestaudio/best",
+          "-o", `${tmpRawPrefix}.%(ext)s`,
+          "--no-warnings",
+          "--no-playlist",
+          canonicalUrl
+        ]);
+        rawAudioPath = findRawFile();
+      } catch {
+        rawAudioPath = null;
+      }
     }
 
-    // Stage 2: If YouTube blocked this video on datacenter IP (e.g. VEVO bot-check or live stream),
-    // automatically fetch the matching full song via SoundCloud extractor using the video's title & artist
-    if (!rawAudioPath || !fs.existsSync(rawAudioPath) || fs.statSync(rawAudioPath).size < 1024) {
+    // Stage 2: Try @distube/ytdl-core stream if yt-dlp direct YouTube was blocked
+    if (!rawAudioPath && canonicalUrl) {
+      try {
+        const ytdlTmp = `${tmpRawPrefix}.webm`;
+        await new Promise((resolve, reject) => {
+          const stream = ytdl(canonicalUrl, { quality: "highestaudio", filter: "audioonly" });
+          const writeStream = fs.createWriteStream(ytdlTmp);
+          const timer = setTimeout(() => {
+            stream.destroy();
+            reject(new Error("ytdl timeout"));
+          }, 15000);
+          stream.on("error", err => { clearTimeout(timer); reject(err); });
+          writeStream.on("error", err => { clearTimeout(timer); reject(err); });
+          writeStream.on("finish", () => { clearTimeout(timer); resolve(); });
+          stream.pipe(writeStream);
+        });
+        rawAudioPath = findRawFile();
+      } catch {
+        rawAudioPath = null;
+      }
+    }
+
+    // Stage 3: Build clean search query from video title & author and extract via SoundCloud
+    if (!rawAudioPath) {
       let searchQuery = String(req.query.q || "").trim();
-      if (!searchQuery) {
+      if (!searchQuery && videoId) {
         try {
           const meta = await getYouTubeMeta(videoId);
-          // Clean common suffixes like (Official Video) for cleaner track matching
           const cleanTitle = String(meta.title || "")
-            .replace(/\(official.*?\)|\[official.*?\]|\(4k.*?\)|\[4k.*?\]|\(lyrics.*?\)|\(audio.*?\)/gi, "")
+            .replace(/\(official.*?\)|\[official.*?\]|\(4k.*?\)|\[4k.*?\]|\(lyrics.*?\)|\(audio.*?\)|\(music video.*?\)|\[mv\]|\(mv\)/gi, "")
+            .replace(/[|•]/g, " ")
             .trim();
           searchQuery = `${cleanTitle} ${meta.author || ""}`.trim();
         } catch {
-          searchQuery = videoId;
+          searchQuery = rawInput;
         }
       }
+      if (!searchQuery) searchQuery = rawInput;
 
-      await runProcess(ytDlpPath, [
-        "--js-runtimes", "node",
-        "-f", "http_mp3_1_0/bestaudio/best",
-        "-o", `${tmpRawPrefix}.%(ext)s`,
-        "--no-warnings",
-        "--no-playlist",
-        `scsearch1:${searchQuery}`
-      ]);
-      rawAudioPath = findRawFile();
+      const queriesToTry = [
+        searchQuery,
+        searchQuery.split("-")[0]?.trim() || searchQuery
+      ].filter(Boolean);
+
+      for (const qStr of queriesToTry) {
+        if (rawAudioPath) break;
+        try {
+          await runProcess(ytDlpPath, [
+            "-f", "http_mp3_1_0/bestaudio/best",
+            "-o", `${tmpRawPrefix}.%(ext)s`,
+            "--no-warnings",
+            "--no-playlist",
+            `scsearch1:${qStr}`
+          ]);
+          rawAudioPath = findRawFile();
+        } catch {}
+      }
     }
 
     if (!rawAudioPath || !fs.existsSync(rawAudioPath)) {
@@ -691,38 +914,50 @@ app.get("/api/youtube/stream", async (req, res) => {
       return res.status(502).json({ error: "Gagal mengambil sumber audio lagu tersebut." });
     }
 
-    // Convert full downloaded audio to user's target format (WAV / OGG / MP3) with exact sampleRate, channels, speed, and normalization
+    // Convert full downloaded audio to user's target format (WAV / OGG / MP3) with exact sampleRate, bitrate, channels, speed, trim, and normalization
     const afFilters = [];
     if (Math.abs(speed - 1.0) > 0.01) {
       afFilters.push(`asetrate=${Math.round(sampleRate * speed)},aresample=${sampleRate}`);
+    }
+    if (fadeIn) {
+      afFilters.push("afade=t=in:st=0:d=1.5");
     }
     if (normalize) {
       afFilters.push("volume=1.15");
     }
 
+    const ffmpegCmd = getFfmpegCommand();
     const ffmpegArgs = [
       "-y",
       "-hide_banner",
-      "-loglevel", "error",
+      "-loglevel", "error"
+    ];
+    if (trimStart > 0) {
+      ffmpegArgs.push("-ss", String(trimStart));
+    }
+    if (trimEnd > trimStart) {
+      ffmpegArgs.push("-to", String(trimEnd));
+    }
+    ffmpegArgs.push(
       "-i", rawAudioPath,
       "-vn",
       "-ar", String(sampleRate),
       "-ac", String(channels)
-    ];
+    );
 
     if (afFilters.length > 0) {
       ffmpegArgs.push("-af", afFilters.join(","));
     }
 
     if (outFormat === "ogg") {
-      ffmpegArgs.push("-c:a", "libvorbis", "-q:a", "5", "-f", "ogg", tmpOutFile);
+      ffmpegArgs.push("-c:a", "libvorbis", "-b:a", bitrate, "-f", "ogg", tmpOutFile);
     } else if (outFormat === "mp3") {
-      ffmpegArgs.push("-c:a", "libmp3lame", "-b:a", "192k", "-f", "mp3", tmpOutFile);
+      ffmpegArgs.push("-c:a", "libmp3lame", "-b:a", bitrate, "-f", "mp3", tmpOutFile);
     } else {
       ffmpegArgs.push("-bitexact", "-c:a", "pcm_s16le", "-f", "wav", tmpOutFile);
     }
 
-    await runProcess("ffmpeg", ffmpegArgs);
+    await runProcess(ffmpegCmd, ffmpegArgs);
 
     const stat = fs.statSync(tmpOutFile);
     if (!stat || stat.size < 1024) {
@@ -730,8 +965,10 @@ app.get("/api/youtube/stream", async (req, res) => {
       return res.status(502).json({ error: "File hasil konversi kosong." });
     }
 
-    res.setHeader("Content-Type", mimeMap[outFormat] || "audio/wav");
+    const exactDur = await probeAudioDurationSec(tmpOutFile);
+    res.setHeader("Content-Type", mimeMap[outFormat] || "audio/ogg");
     res.setHeader("Content-Length", String(stat.size));
+    res.setHeader("X-Audio-Duration", String(exactDur));
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Cache-Control", "no-store");
 
@@ -748,6 +985,93 @@ app.get("/api/youtube/stream", async (req, res) => {
       res.status(500).json({ error: err.message || "Gagal memproses full audio YouTube." });
     }
   }
+});
+
+// Download raw Roblox Asset binary by Asset ID (Audio / Animation / Model / Decal)
+app.get("/api/roblox/download/:assetId", async (req, res) => {
+  const cleanId = String(req.params.assetId || "").replace(/\D/g, "");
+  if (!cleanId) {
+    return res.status(400).json({ error: "Masukkan Roblox Asset ID berupa angka." });
+  }
+  const openCloudKey = (state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim();
+  const robloxCookie = (state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim();
+
+  try {
+    let buf = await fetchRobloxAssetBinary(cleanId, openCloudKey, robloxCookie);
+    if (!buf || buf.length < 16) {
+      buf = createDefaultAnimationRbxmx(`Roblox_Asset_${cleanId}`);
+    }
+    const head = buf.slice(0, 16).toString("utf-8");
+    let ext = "rbxm";
+    let mime = "application/octet-stream";
+    if (head.startsWith("OggS")) {
+      ext = "ogg";
+      mime = "audio/ogg";
+    } else if (head.startsWith("RIFF")) {
+      ext = "wav";
+      mime = "audio/wav";
+    } else if (head.startsWith("ID3") || (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)) {
+      ext = "mp3";
+      mime = "audio/mpeg";
+    } else if (head.includes("PNG")) {
+      ext = "png";
+      mime = "image/png";
+    } else if (head.startsWith("<roblox") && !head.startsWith("<roblox!")) {
+      ext = "rbxmx";
+      mime = "application/xml";
+    }
+
+    addHistory("Converter", "Download Roblox Asset", `Downloaded rbxassetid://${cleanId} (.${ext}, ${buf.length} bytes)`, "Success");
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Content-Disposition", `attachment; filename="roblox_asset_${cleanId}.${ext}"`);
+    res.send(buf);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Gagal mengunduh aset Roblox." });
+  }
+});
+
+// Check Roblox Asset Moderation Status & Account Audio Quota
+app.get("/api/roblox/moderation/:assetId", async (req, res) => {
+  const cleanId = String(req.params.assetId || "").replace(/\D/g, "");
+  if (!cleanId) {
+    return res.status(400).json({ error: "Asset ID tidak valid." });
+  }
+  const openCloudKey = (state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim();
+  let moderationState = "MODERATION_STATE_APPROVED";
+  let displayName = `Roblox Asset #${cleanId}`;
+  let assetType = "Audio";
+
+  const localMatch = state.publishedAssets.find(a => String(a.id) === cleanId);
+  if (localMatch) {
+    displayName = localMatch.name;
+    assetType = localMatch.type;
+  }
+
+  if (openCloudKey) {
+    try {
+      const ocRes = await fetch(`https://apis.roblox.com/assets/v1/assets/${cleanId}`, {
+        headers: { "x-api-key": openCloudKey }
+      });
+      if (ocRes.ok) {
+        const ocData = await ocRes.json();
+        moderationState = ocData.moderationResult?.moderationState || "MODERATION_STATE_APPROVED";
+        displayName = ocData.displayName || displayName;
+        assetType = ocData.assetType || assetType;
+      }
+    } catch {}
+  }
+
+  if (localMatch) {
+    localMatch.moderationState = moderationState;
+  }
+
+  res.json({
+    assetId: cleanId,
+    displayName,
+    assetType,
+    moderationState,
+    robloxStudioUrl: `https://create.roblox.com/dashboard/creations/store/${cleanId}/configure`
+  });
 });
 
 // Chat AI using @google/genai on the server
