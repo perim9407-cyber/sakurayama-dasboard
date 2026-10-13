@@ -333,7 +333,15 @@ async function postToRobloxOpenCloudV1({ openCloudKey, rbxAssetType, displayName
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const errMsg = data.message || data.error || JSON.stringify(data);
-    const err = new Error(`Roblox Open Cloud (HTTP ${response.status}): ${errMsg}`);
+    let detail = `Roblox Open Cloud (HTTP ${response.status}): ${errMsg}`;
+    if (response.status === 403 && /unauthorized to create an? audio asset as group/i.test(errMsg)) {
+      detail += " | Perbaikan: cek Roblox Settings. Jika ID tersebut adalah User ID, ubah Creator Type menjadi User. Jika ingin upload atas nama grup, gunakan Group ID asli (bukan User ID), lalu pastikan API key memiliki izin Assets: Create untuk grup itu dan akun pemilik key punya hak yang diperlukan di grup. Jangan kirim API key ke siapa pun.";
+    } else if (response.status === 403) {
+      detail += " | HTTP 403 biasanya berarti API key tidak punya scope/izin untuk operasi atau creator target. Periksa scope API key, Creator Type/ID, dan izin akun pada grup.";
+    } else if (response.status === 401) {
+      detail += " | API key tidak valid atau tidak diterima Roblox. Periksa key di konfigurasi server.";
+    }
+    const err = new Error(detail);
     err.status = response.status;
     throw err;
   }
@@ -392,9 +400,11 @@ async function uploadToRobloxDirect({ name, description, assetType, creatorType,
   if (!payloadBytes && originalAssetId) {
     payloadBytes = await fetchRobloxAssetBinary(originalAssetId, openCloudKey, robloxCookie);
   }
-  if (!payloadBytes && (assetType === "Animation" || assetType === "Model")) {
-    payloadBytes = createDefaultAnimationRbxmx(name);
-    fileName = fileName || `${name}.rbxmx`;
+  if (!payloadBytes && originalAssetId) {
+    throw new Error("Aset sumber " + cleanId + " tidak dapat diunduh. Aset mungkin private, tidak diizinkan, atau API key tidak memiliki akses. Pilih file asli untuk upload.");
+  }
+  if (!payloadBytes) {
+    throw new Error("File aset asli wajib dipilih. Dashboard tidak akan membuat file placeholder lalu mengklaim upload berhasil.");
   }
 
   // Primary Path: Pure Roblox Open Cloud API Key (NO .ROBLOSECURITY cookie needed!)
@@ -408,8 +418,12 @@ async function uploadToRobloxDirect({ name, description, assetType, creatorType,
       throw new Error("Creator ID / Group ID wajib berupa angka ID Roblox kamu yang asli.");
     }
 
+    const normalizedCreatorType = String(creatorType || "").trim().toLowerCase();
+    if (!["user", "group"].includes(normalizedCreatorType)) {
+      throw new Error("Creator Type tidak valid. Pilih User atau Group secara eksplisit.");
+    }
     const creationContext = {
-      creator: creatorType === "User"
+      creator: normalizedCreatorType === "user"
         ? { userId: cleanNumericId }
         : { groupId: cleanNumericId }
     };
@@ -512,7 +526,8 @@ async function uploadToRobloxDirect({ name, description, assetType, creatorType,
 app.get("/api/state", (req, res) => {
   const hasKey = Boolean((state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim());
   const hasCookie = Boolean((state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim());
-  state.settings.openCloudConnected = hasKey || hasCookie;
+  // A configured key/cookie is not proof that Roblox accepted it.
+  state.settings.openCloudConnected = Boolean(hasCookie && state.settings.verifiedUsername);
   res.json({
     ...state,
     settings: {
@@ -1381,8 +1396,9 @@ app.post("/api/roblox/publish", async (req, res) => {
     return res.status(400).json({ error: "Nama aset wajib diisi." });
   }
 
-  const cType = creatorType || state.settings.creatorType;
-  const cId = creatorId || state.settings.creatorId;
+  // Railway deployment values are authoritative when configured, so stale frontend state cannot silently override the target creator.
+  const cType = process.env.ROBLOX_CREATOR_TYPE || creatorType || state.settings.creatorType;
+  const cId = process.env.ROBLOX_CREATOR_ID || creatorId || state.settings.creatorId;
   const aType = type || "Animation";
 
   const hasLiveCredentials = Boolean(
@@ -1468,15 +1484,26 @@ app.post("/api/roblox/publish-batch", async (req, res) => {
     return res.status(400).json({ error: "Daftar aset yang akan di-publish masih kosong." });
   }
 
-  const maxItems = items.slice(0, 5000);
-  const cType = creatorType || state.settings.creatorType;
-  const cId = creatorId || state.settings.creatorId;
+  if (items.length > 25) {
+    return res.status(400).json({ error: "Mass publish live dibatasi maksimal 25 file per batch. Kirim batch lebih kecil agar setiap upload bisa diverifikasi." });
+  }
+  const missingFileIndex = items.findIndex(item => !item || !item.fileBase64 || !item.fileName);
+  if (missingFileIndex !== -1) {
+    return res.status(400).json({ error: "Item ke-" + (missingFileIndex + 1) + " tidak memiliki file asli. ID/nama saja tidak bisa dipublikasikan sebagai aset baru ke Roblox." });
+  }
+  const maxItems = items;
+  // Railway deployment values are authoritative when configured, so stale frontend state cannot silently override the target creator.
+  const cType = process.env.ROBLOX_CREATOR_TYPE || creatorType || state.settings.creatorType;
+  const cId = process.env.ROBLOX_CREATOR_ID || creatorId || state.settings.creatorId;
   const defaultType = type || "Animation";
   const createdAssets = [];
   const hasLiveCredentials = Boolean(
     (state.settings.openCloudKey || process.env.ROBLOX_API_KEY || "").trim() ||
     (state.settings.robloxCookie || process.env.ROBLOX_COOKIE || "").trim()
   );
+  if (!hasLiveCredentials) {
+    return res.status(400).json({ error: "Mass publish live memerlukan kredensial Roblox yang tersimpan. Tidak ada ID aset simulasi yang akan dibuat." });
+  }
 
   let liveSuccessCount = 0;
   let lastLiveError = null;
@@ -1566,17 +1593,7 @@ app.get("/api/roblox/permissions/:assetId", (req, res) => {
     return res.status(400).json({ error: "Asset ID tidak valid." });
   }
   if (!state.permissions[cleanId]) {
-    state.permissions[cleanId] = {
-      assetId: cleanId,
-      name: `Roblox Asset #${cleanId}`,
-      type: "Audio / Animation",
-      owner: `${state.settings.creatorType} #${state.settings.creatorId}`,
-      visibility: "Private",
-      allowCopying: false,
-      authorizedPlaces: [
-        { placeId: "892341029", name: "Sakurayama RPG - Main Hub", access: "Use & View", addedAt: "2026-10-10" }
-      ]
-    };
+    return res.status(404).json({ error: "Data permission aset ini belum tersedia di sesi dashboard. Dashboard tidak akan mengarang permission Roblox live." });
   }
   state.apiUsage.robloxUsed += 1;
   res.json({ permission: state.permissions[cleanId], apiUsage: state.apiUsage });
@@ -1700,19 +1717,14 @@ app.post("/api/roblox/verify-credentials", async (req, res) => {
     }
   }
 
-  if (activeKey) {
-    state.settings.openCloudKey = activeKey;
-    results.ok = true;
-  }
-
-  state.settings.openCloudConnected = Boolean(state.settings.openCloudKey || state.settings.robloxCookie);
-
+  if (activeKey) state.settings.openCloudKey = activeKey;
+  state.settings.openCloudConnected = Boolean(results.cookieValid);
   if (results.cookieValid && results.detectedUser) {
-    results.message = `Terhubung ke Akun Roblox: @${results.detectedUser.name} (User ID: ${results.detectedUser.id}). Siap Direct Upload semua aset!`;
+    results.message = `Terautentikasi sebagai @${results.detectedUser.name} (User ID: ${results.detectedUser.id}).`;
   } else if (results.openCloudConfigured) {
-    results.message = `Open Cloud API Key aktif untuk ${creatorType || state.settings.creatorType} #${creatorId || state.settings.creatorId}. Siap Direct Upload Animation (.rbxm), Audio (.ogg/.mp3/.wav), Decal (.png), & Model tanpa Cookie!`;
+    results.ok = false;
+    results.message = "API key tersimpan, tetapi belum tervalidasi. Key harus diuji pada endpoint yang sesuai dengan scope dan asset/creator target. Coba upload file asli; server akan menampilkan HTTP error Roblox jika scope, creator, atau key tidak cocok.";
   }
-
   res.json(results);
 });
 
@@ -1770,13 +1782,13 @@ app.post("/api/roblox/settings", async (req, res) => {
     webhookUrl: String(updates.webhookUrl || ""),
     openCloudKey: nextKey,
     robloxCookie: nextCookie,
-    openCloudConnected: hasKey || hasCookie
+    openCloudConnected: Boolean(hasCookie && verifiedUsername)
   };
 
   const histItem = addHistory(
     "Roblox Settings",
     "Update Kredensial & Target",
-    `Creator: ${state.settings.creatorType} #${state.settings.creatorId}${verifiedUsername ? ` (@${verifiedUsername})` : ""} | OpenCloud: ${hasKey ? "Aktif" : "Off"} | Cookie: ${hasCookie ? "Aktif" : "Off"}`,
+    `Creator: ${state.settings.creatorType} #${state.settings.creatorId}${verifiedUsername ? ` (@${verifiedUsername})` : ""} | OpenCloud: ${hasKey ? "Tersimpan (belum tervalidasi)" : "Off"} | Cookie: ${verifiedUsername ? "Terverifikasi" : hasCookie ? "Tersimpan (belum tervalidasi)" : "Off"}`,
     "Success"
   );
 
